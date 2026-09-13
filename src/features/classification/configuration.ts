@@ -5,7 +5,7 @@ import {
   TERRA_VERIFICATION_PROMPT_VERSION,
 } from "./prompts";
 
-export const CLASSIFICATION_SCHEMA_VERSION = "classification-v1";
+export const CLASSIFICATION_SCHEMA_VERSION = "classification-v2";
 
 export const createClassificationConfigurationKey = (input: {
   policyVersion: number;
@@ -17,7 +17,7 @@ export const createClassificationConfigurationKey = (input: {
   createHash("sha256")
     .update(
       JSON.stringify({
-        pipeline: "classification-v1",
+        pipeline: "classification-v2",
         policyVersion: input.policyVersion,
         providerMode: input.providerMode,
         moderationModel: input.moderationModel,

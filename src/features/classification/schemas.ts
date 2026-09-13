@@ -63,6 +63,34 @@ export const CertaintySchema = z.enum([
   "unclear",
 ]);
 
+/** 댓글이 수행하는 말의 기능. 거친 낱말과 실제 공격 의도를 분리한다. */
+export const CommentIntentSchema = z.enum([
+  "praise",
+  "neutral",
+  "question",
+  "criticism",
+  "attack",
+  "ambiguous",
+]);
+
+/** 댓글이 실제로 겨냥하는 대상. */
+export const CommentTargetSchema = z.enum([
+  "content",
+  "creator_behavior",
+  "creator_person",
+  "third_party",
+  "self",
+  "none",
+  "unclear",
+]);
+
+/** 사람에게 넘겨야 하는 문맥 부족의 종류. */
+export const AmbiguityReasonSchema = z.enum([
+  "possible_sarcasm",
+  "unclear_slang_polarity",
+  "missing_context",
+]);
+
 /**
  * 1-B. Luna 1차 분류 출력.
  *
@@ -73,6 +101,9 @@ export const LunaFirstPassSchema = z
   .object({
     candidateLevel: RiskLevelSchema,
     certainty: CertaintySchema,
+    intent: CommentIntentSchema,
+    target: CommentTargetSchema,
+    ambiguityReasons: z.array(AmbiguityReasonSchema).max(3),
     /**
      * 표현을 걷어내면 콘텐츠에 쓸 만한 내용이 남는지. 있음/없음만 본다.
      * 어떤 종류인지와 핵심 내용은 Terra 가 뽑는다.
@@ -97,6 +128,21 @@ export const LunaFirstPassSchema = z
     matchedRules: z.array(z.string().min(1).max(80)).max(10),
   })
   .strict();
+
+/** 배포 중인 V1 작업을 재개할 때만 쓰는 이전 출력 호환 계약. */
+export const StoredLunaFirstPassSchema = z.union([
+  LunaFirstPassSchema,
+  LunaFirstPassSchema.omit({
+    intent: true,
+    target: true,
+    ambiguityReasons: true,
+  }).transform((legacy) => ({
+    ...legacy,
+    intent: "neutral" as const,
+    target: "unclear" as const,
+    ambiguityReasons: [],
+  })),
+]);
 
 /**
  * 기획서 6번의 분류 사유 코드. 크리에이터에게 "왜 이 등급인지" 보여줄 때 쓴다.
@@ -153,6 +199,9 @@ export const TerraVerdictSchema = z
     /** Terra 자신의 등급 판단. Luna 후보와 같을 수도, 다를 수도 있다. */
     verdictLevel: RiskLevelSchema,
     certainty: CertaintySchema,
+    intent: CommentIntentSchema,
+    target: CommentTargetSchema,
+    ambiguityReasons: z.array(AmbiguityReasonSchema).max(3),
     reasonCodes: z.array(ReasonCodeSchema).max(13),
     hardRiskFlags: z.array(HardRiskFlagSchema).max(9),
     softRiskFlags: z.array(SoftRiskFlagSchema).max(5),
@@ -173,6 +222,21 @@ export const TerraVerdictSchema = z
     safetyCase: z.boolean(),
   })
   .strict();
+
+/** 저장된 V1 Terra 출력은 기존 판정 의미를 유지하며 읽는다. */
+export const StoredTerraVerdictSchema = z.union([
+  TerraVerdictSchema,
+  TerraVerdictSchema.omit({
+    intent: true,
+    target: true,
+    ambiguityReasons: true,
+  }).transform((legacy) => ({
+    ...legacy,
+    intent: "neutral" as const,
+    target: "unclear" as const,
+    ambiguityReasons: [],
+  })),
+]);
 
 /**
  * 순화문의 말투. 기획서 3번 「AI 순화 지침」의 세 갈래를 그대로 옮겼다.
@@ -261,6 +325,7 @@ export const ClassificationProfileSchema = z
     allowedSlang: z
       .array(z.string().min(1).max(PROFILE_LIMITS.phraseChars))
       .max(PROFILE_LIMITS.allowedSlang),
+    allowedContexts: z.array(z.object({ phrase: z.string().min(1).max(40), context: z.string().min(1).max(200) })).max(50).optional(),
     sensitiveTopics: z
       .array(z.string().min(1).max(PROFILE_LIMITS.phraseChars))
       .max(PROFILE_LIMITS.sensitiveTopics),
@@ -272,6 +337,9 @@ export const ClassificationProfileSchema = z
 
 export type RiskLevel = z.infer<typeof RiskLevelSchema>;
 export type Certainty = z.infer<typeof CertaintySchema>;
+export type CommentIntent = z.infer<typeof CommentIntentSchema>;
+export type CommentTarget = z.infer<typeof CommentTargetSchema>;
+export type AmbiguityReason = z.infer<typeof AmbiguityReasonSchema>;
 export type HardRiskFlag = z.infer<typeof HardRiskFlagSchema>;
 export type SoftRiskFlag = z.infer<typeof SoftRiskFlagSchema>;
 export type LunaFirstPass = z.infer<typeof LunaFirstPassSchema>;

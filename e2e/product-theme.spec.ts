@@ -13,7 +13,7 @@ test("selects and persists a product theme across app pages", async ({
   const themeGroup = page.getByRole("group", { name: "화면 테마" });
   await expect(themeGroup).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "라이트 모드 사용" }),
+    page.getByRole("button", { name: "다크 모드 사용" }),
   ).toHaveAttribute("aria-pressed", "true");
 
   await page.getByRole("button", { name: "다크 모드 사용" }).click();
@@ -22,7 +22,7 @@ test("selects and persists a product theme across app pages", async ({
     page.getByRole("button", { name: "다크 모드 사용" }),
   ).toHaveAttribute("aria-pressed", "true");
   await expect(
-    page.getByRole("link", { name: "개요", exact: true }),
+    page.getByRole("link", { name: "YouTube 연결", exact: true }),
   ).toHaveCSS(
     "background-color",
     "rgba(75, 111, 255, 0.16)",

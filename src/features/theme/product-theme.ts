@@ -16,7 +16,7 @@ export function readProductTheme(
 
   return isProductTheme(resolvedRoot?.dataset.theme)
     ? resolvedRoot.dataset.theme
-    : "light";
+    : "dark";
 }
 
 export function applyProductTheme(

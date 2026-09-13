@@ -9,6 +9,7 @@ import {
   saveCreatorPolicyVersion,
   type CreatorPolicyRepository,
 } from "@/features/policies/policy-service";
+import { readPolicyEditor } from "@/features/policies/policy-editor";
 import { toClassificationProfileUpdate } from "@/features/policies/policy-to-classification-profile";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -25,6 +26,13 @@ const policyFormSchema = z.object({
 });
 
 export const saveCreatorPolicyAction = async (formData: FormData) => {
+  if (formData.get("editor") === "minimal") {
+    const editor = readPolicyEditor(formData);
+    if (!editor.success) redirect("/app/settings/moderation?error=invalid_policy");
+    formData.set("blocked", [...new Set(editor.data.topics)].join("\n"));
+    formData.set("allowed", editor.data.contexts.filter(row => !row.context).map(row => row.phrase).join("\n"));
+    formData.set("contextExceptions", editor.data.contexts.filter(row => row.context).map(row => `${row.phrase} | ${row.context}`).join("\n"));
+  }
   const parsed = policyFormSchema.safeParse({
     blocked: formData.get("blocked") ?? "",
     allowed: formData.get("allowed") ?? "",

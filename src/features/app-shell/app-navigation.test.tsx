@@ -16,8 +16,6 @@ import {
 
 describe("AppNavigation", () => {
   it.each([
-    ["/app", "/app", true],
-    ["/app/inbox", "/app", false],
     ["/app/inbox", "/app/inbox", true],
     ["/app/inbox/thread", "/app/inbox", true],
     ["/app/connect/youtube", "/app/connect/youtube", true],
@@ -41,13 +39,11 @@ describe("AppNavigation", () => {
     expect(
       screen.getByRole("link", { name: "댓글 Inbox" }),
     ).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "개요" })).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(screen.queryByRole("link", { name: "개요" })).not.toBeInTheDocument();
   });
 
   it("removes the video menu and adds developer tools only for approved developers", () => {
-    navigationState.pathname = "/app";
+    navigationState.pathname = "/app/connect/youtube";
 
     const normal = render(<AppNavigation />);
 

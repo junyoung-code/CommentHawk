@@ -1,8 +1,8 @@
-import { ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/features/auth/sign-out-button";
+import { BrandLogo } from "@/features/brand/brand-logo";
 import { ThemeToggle } from "@/features/theme/theme-toggle";
 
 import { AppNavigation } from "./app-navigation";
@@ -19,10 +19,12 @@ export function AppShell({
   return (
     <div className="product-shell">
       <aside className="product-sidebar">
-        <Link className="product-brand" href="/app" aria-label="CrowdSift 개요">
-          <span className="product-brand-mark" aria-hidden="true">
-            <ShieldCheck weight="fill" />
-          </span>
+        <Link
+          className="product-brand"
+          href="/app/connect/youtube"
+          aria-label="CrowdSift YouTube 연결"
+        >
+          <BrandLogo />
           <strong>CrowdSift</strong>
         </Link>
 

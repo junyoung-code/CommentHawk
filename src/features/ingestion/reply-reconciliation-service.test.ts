@@ -430,9 +430,13 @@ describe("reply reconciliation Supabase adapter", () => {
       page_token: null,
       last_successful_sync_at: "2026-08-08T00:00:00.000Z",
       incremental_scan_started_at: null,
+      incremental_page_token: null,
+      backfill_page_token: null,
+      backfill_status: "completed",
+      cycle_budget: 1,
     };
     const rpc = vi.fn(async (name: string) =>
-      name === "claim_channel_comment_sync_work"
+      name === "claim_channel_comment_sync_cycle"
         ? { data: [claimRow], error: null }
         : { data: [], error: null },
     );
@@ -664,7 +668,9 @@ describe("reply reconciliation Supabase adapter", () => {
     );
     const targetRepository =
       typeof createRepository === "function"
-        ? createRepository(admin)
+        ? createRepository(
+            admin as unknown as Parameters<typeof createRepository>[0],
+          )
         : null;
     const cursor = {
       publishedAt: "2026-08-01T00:00:00.000Z",

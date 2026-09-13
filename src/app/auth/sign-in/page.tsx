@@ -1,10 +1,8 @@
-import { ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 
 import { GoogleSignInButton } from "@/features/auth/google-sign-in-button";
 import { getSafeNextPath } from "@/features/auth/safe-next-path";
-
-import { SignInForm } from "./sign-in-form";
+import { BrandLogo } from "@/features/brand/brand-logo";
 
 type SignInPageProps = {
   searchParams: Promise<{
@@ -22,9 +20,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="sign-in-title">
         <Link className="auth-brand" href="/">
-          <span aria-hidden="true">
-            <ShieldCheck weight="fill" />
-          </span>
+          <BrandLogo />
           CrowdSift
         </Link>
         <p className="auth-eyebrow">CREATOR SIGN IN</p>
@@ -35,20 +31,10 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
         </p>
         {hasExpiredError ? (
           <p className="form-message form-message-error" role="alert">
-            로그인 링크가 만료되었거나 유효하지 않습니다. 새 링크를 받아 주세요.
+            로그인이 만료되었거나 유효하지 않습니다. Google로 다시 로그인해 주세요.
           </p>
         ) : null}
         <GoogleSignInButton nextPath={nextPath} />
-        <details className="auth-alternative">
-          <summary>다른 방법으로 로그인</summary>
-          <div>
-            <p>
-              이메일로 일회용 로그인 링크를 받을 수 있습니다. 비밀번호는
-              저장하지 않습니다.
-            </p>
-            <SignInForm />
-          </div>
-        </details>
         <div className="auth-separation-note">
           <strong>권한은 분리해서 관리합니다</strong>
           <p>

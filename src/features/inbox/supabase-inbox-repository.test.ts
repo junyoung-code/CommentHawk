@@ -75,6 +75,7 @@ describe("Supabase Inbox repository", () => {
     const result = await repository.query({
       workspaceId: "workspace-1",
       reviewLevels: ["caution", "risk"],
+      classificationStatus: null,
       category: "question",
       videoIds: ["video-1", "video-2"],
       analysisState: "analyzed",
@@ -86,7 +87,7 @@ describe("Supabase Inbox repository", () => {
       offset: 0,
     });
 
-    expect(rpc).toHaveBeenCalledWith("get_inbox_conversation_page", {
+    expect(rpc).toHaveBeenCalledWith("get_inbox_feed_page", {
       target_workspace_id: "workspace-1",
       review_levels: ["caution", "risk"],
       category_filter: "question",
@@ -98,6 +99,9 @@ describe("Supabase Inbox repository", () => {
       search_query: "자막",
       page_size: 25,
       page_offset: 0,
+      classification_status_filter: undefined,
+      period_filter: "all",
+      sort_order: "latest",
     });
     expect(result).toEqual({
       items: [
@@ -111,6 +115,8 @@ describe("Supabase Inbox repository", () => {
           videoThumbnailUrl: "https://i.ytimg.com/example.jpg",
           analysisId: "analysis-1",
           classificationStatus: "decided",
+          aiClassificationStatus: "decided",
+          resolvedByUser: false,
           classificationTrace: expect.objectContaining({
             branch: expect.objectContaining({ outcome: "verify" }),
             final: expect.objectContaining({ level: "caution" }),
@@ -139,5 +145,68 @@ describe("Supabase Inbox repository", () => {
       total: 1,
     });
     expect(result.items[0]?.safeSourceText).toBe("안전 댓글 원문");
+  });
+
+  it("maps creator resolutions while delegating held pagination to the database", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [
+        {
+          raw_comment_id: "comment-1",
+          source_import_job_id: "import-1",
+          source_kind: "owned_oauth",
+          youtube_video_id: "video-1",
+          video_title: "새 영상",
+          video_thumbnail_url: null,
+          author_display_name: "시청자",
+          author_avatar_url: null,
+          published_at: null,
+          like_count: 0,
+          source_available: true,
+          safe_source_text: "사람이 안전으로 확정한 댓글",
+          analysis_id: "analysis-1",
+          classification_status: "review_queue",
+          classification_trace: null,
+          category: "positive",
+          review_level: "safe",
+          ai_review_level: null,
+          confidence: null,
+          recommended_action: "none",
+          manual_review: true,
+          neutral_text: null,
+          normalized_question: null,
+          analysis_state: "analyzed",
+          action_state: null,
+          source_moderation_status: "published",
+          delete_eligible: false,
+          reply_count: 0,
+          replies: [],
+          total_count: 1,
+        },
+      ],
+      error: null,
+    });
+    const repository = createSupabaseInboxRepository({ rpc });
+
+    const result = await repository.query({
+      workspaceId: "workspace-1",
+      reviewLevels: ["caution", "risk"],
+      classificationStatus: "review_queue",
+      category: null,
+      videoIds: [],
+      analysisState: null,
+      actionState: null,
+      minConfidence: null,
+      maxConfidence: null,
+      search: null,
+      limit: 25,
+      offset: 0,
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "get_inbox_feed_page",
+      expect.objectContaining({ classification_status_filter: "review_queue", page_size: 25, page_offset: 0 }),
+    );
+    expect(result.items[0]).toMatchObject({ classificationStatus: "decided", aiClassificationStatus: "review_queue", resolvedByUser: true });
+    expect(result.total).toBe(1);
   });
 });

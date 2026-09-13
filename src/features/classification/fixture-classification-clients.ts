@@ -13,6 +13,7 @@ import {
 type FixtureStage = "luna" | "terra" | "rewrite";
 
 const threatPattern = /가만두지|찾아가서|죽어|죽여|위협/;
+const protectedSourcePattern = /source harmful text/;
 const cautionPattern = /광고|느리|소리|어두워|왜 이렇게|자막/;
 
 const sourceTextFromRequest = (request: Record<string, unknown>) => {
@@ -38,10 +39,29 @@ const sourceTextFromRequest = (request: Record<string, unknown>) => {
 };
 
 const lunaOutputFor = (sourceText: string): LunaFirstPass => {
+  if (protectedSourcePattern.test(sourceText)) {
+    return {
+      candidateLevel: "danger",
+      certainty: "clear",
+      intent: "attack",
+      target: "creator_person",
+      ambiguityReasons: [],
+      feedbackPresent: false,
+      locationOrScheduleMention: false,
+      sensitiveTopicMatched: false,
+      hardRiskFlags: ["personal_attack"],
+      softRiskFlags: [],
+      matchedRules: ["fixture:protected-source"],
+    };
+  }
+
   if (threatPattern.test(sourceText)) {
     return {
       candidateLevel: "danger",
       certainty: "clear",
+      intent: "attack",
+      target: "creator_person",
+      ambiguityReasons: [],
       feedbackPresent: false,
       locationOrScheduleMention: true,
       sensitiveTopicMatched: false,
@@ -55,6 +75,9 @@ const lunaOutputFor = (sourceText: string): LunaFirstPass => {
     return {
       candidateLevel: "caution",
       certainty: "clear",
+      intent: "criticism",
+      target: "content",
+      ambiguityReasons: [],
       feedbackPresent: true,
       locationOrScheduleMention: false,
       sensitiveTopicMatched: false,
@@ -67,6 +90,9 @@ const lunaOutputFor = (sourceText: string): LunaFirstPass => {
   return {
     candidateLevel: "safe",
     certainty: "clear",
+    intent: "neutral",
+    target: "none",
+    ambiguityReasons: [],
     feedbackPresent: false,
     locationOrScheduleMention: false,
     sensitiveTopicMatched: false,
@@ -77,10 +103,31 @@ const lunaOutputFor = (sourceText: string): LunaFirstPass => {
 };
 
 const terraOutputFor = (sourceText: string): TerraVerdict => {
+  if (protectedSourcePattern.test(sourceText)) {
+    return {
+      verdictLevel: "danger",
+      certainty: "clear",
+      intent: "attack",
+      target: "creator_person",
+      ambiguityReasons: [],
+      reasonCodes: ["personal_attack"],
+      hardRiskFlags: ["personal_attack"],
+      softRiskFlags: [],
+      feedbackType: "none",
+      feedbackActionable: false,
+      feedbackCore: null,
+      recommendedActions: ["hide_source", "consider_delete"],
+      safetyCase: false,
+    };
+  }
+
   if (threatPattern.test(sourceText)) {
     return {
       verdictLevel: "danger",
       certainty: "clear",
+      intent: "attack",
+      target: "creator_person",
+      ambiguityReasons: [],
       reasonCodes: ["threat"],
       hardRiskFlags: ["threat"],
       softRiskFlags: [],
@@ -99,6 +146,9 @@ const terraOutputFor = (sourceText: string): TerraVerdict => {
   return {
     verdictLevel: "caution",
     certainty: "clear",
+    intent: "criticism",
+    target: "content",
+    ambiguityReasons: [],
     reasonCodes: [],
     hardRiskFlags: [],
     softRiskFlags: ["harsh_criticism"],

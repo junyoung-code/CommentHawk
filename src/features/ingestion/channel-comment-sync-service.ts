@@ -13,6 +13,7 @@ import {
 
 export type ChannelSyncRunKind =
   | ChannelCommentCollectionKind
+  | "sync_cycle"
   | "reply_reconciliation";
 
 export type ChannelSyncClaim = {
@@ -27,6 +28,10 @@ export type ChannelSyncClaim = {
   pageToken: string | null;
   lastSuccessfulSyncAt: string | null;
   incrementalScanStartedAt: string | null;
+  incrementalPageToken?: string | null;
+  backfillPageToken?: string | null;
+  backfillStatus?: "pending" | "running" | "completed" | "failed";
+  cycleBudget?: number;
 };
 
 export type StoreChannelCommentInput = {
@@ -50,6 +55,10 @@ export type CompleteChannelSyncRunInput = {
   failedCount: number;
   analyzedCount: number;
   quotaUnitsUsed: number;
+  incrementalNextPageToken?: string | null;
+  incrementalReachedBoundary?: boolean;
+  backfillNextPageToken?: string | null;
+  backfillReachedBoundary?: boolean;
 };
 
 export type CompleteChannelVideoImportInput = {
@@ -142,6 +151,7 @@ export interface ChannelSyncSource {
     pageToken: string | null;
     boundaryAt: string;
     kind: ChannelCommentCollectionKind;
+    maxComments?: number;
   }): Promise<ChannelCommentCollectionPage>;
   listVideosByIds(videoIds: string[]): Promise<YouTubeVideo[]>;
 }

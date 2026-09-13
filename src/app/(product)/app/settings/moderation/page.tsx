@@ -1,3 +1,5 @@
+import "@/features/inbox/inbox-shell.css";
+import styles from "@/features/policies/policy.module.css";
 import { CheckCircle } from "@phosphor-icons/react/dist/ssr";
 
 import { requireViewer } from "@/features/auth/require-viewer";
@@ -7,6 +9,8 @@ import {
 } from "@/features/policies/policy-form";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database";
+
+import { previewCreatorPolicyAction } from "./preview-action";
 
 import { saveCreatorPolicyAction } from "./actions";
 
@@ -71,15 +75,19 @@ export default async function ModerationSettingsPage({
     (rules ?? [])
       .filter((rule) => rule.kind === kind)
       .map((rule) =>
-        kind === "context_exception" && rule.context_note
+        rule.context_note
           ? `${rule.phrase} | ${rule.context_note}`
           : rule.phrase,
       )
       .join("\n");
+  const { data: profile, error: profileError } = await supabase
+    .from("classification_profiles").select("allowed_slang")
+    .eq("workspace_id", workspaceId).maybeSingle();
+  if (profileError) throw new Error("Classification profile could not be loaded");
   const initial: PolicyFormValues = {
     version: policy?.version ?? 0,
     blocked: linesForKind("blocked"),
-    allowed: linesForKind("allowed"),
+    allowed: [...new Set([linesForKind("allowed"), ...(profile?.allowed_slang ?? [])].filter(Boolean))].join("\n"),
     contextExceptions: linesForKind("context_exception"),
     sensitivity: readJsonText(
       policy?.category_sensitivity ?? {},
@@ -100,22 +108,16 @@ export default async function ModerationSettingsPage({
   };
 
   return (
-    <div className="moderation-settings-page">
-      <div className="page-heading">
-        <div>
-          <p>MODERATION POLICY</p>
-          <h1>운영 기준</h1>
-          <span>
-            크리에이터가 싫어하는 표현, 허용할 표현과 예외 맥락을 버전별로
-            관리합니다.
-          </span>
-        </div>
-      </div>
+    <div className={`${styles.page} policy-settings-page`}>
+      <header className={styles.heading}>
+        <h1>댓글 관리 기준</h1>
+        <p>우리 채널에 맞는 댓글 판단 기준을 정하세요.</p>
+      </header>
 
       {parameters.saved ? (
         <p className="form-message form-message-success" role="status">
           <CheckCircle aria-hidden="true" weight="fill" />
-          운영 기준 버전 {parameters.saved}을 저장했습니다.
+          댓글 관리 기준을 저장했습니다.
         </p>
       ) : null}
 
@@ -135,12 +137,12 @@ export default async function ModerationSettingsPage({
         </p>
       ) : parameters.error ? (
         <p className="form-message form-message-error" role="alert">
-          운영 기준을 저장하지 못했습니다. 입력 내용을 확인하고 다시 시도해
+          댓글 관리 기준을 저장하지 못했습니다. 입력 내용을 확인하고 다시 시도해
           주세요.
         </p>
       ) : null}
 
-      <PolicyForm action={saveCreatorPolicyAction} initial={initial} />
+      <PolicyForm key={initial.version} action={saveCreatorPolicyAction} initial={initial} previewAction={previewCreatorPolicyAction} />
     </div>
   );
 }

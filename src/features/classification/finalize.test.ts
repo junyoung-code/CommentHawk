@@ -22,6 +22,9 @@ const firstPass: FirstPassResult = {
     result: {
       candidateLevel: "safe",
       certainty: "clear",
+      intent: "neutral",
+      target: "none",
+      ambiguityReasons: [],
       feedbackPresent: false,
       locationOrScheduleMention: false,
       sensitiveTopicMatched: false,
@@ -60,6 +63,9 @@ const verify: BranchOutcome = {
 const terraDanger: TerraVerdict = {
   verdictLevel: "danger",
   certainty: "clear",
+  intent: "attack",
+  target: "creator_person",
+  ambiguityReasons: [],
   reasonCodes: ["personal_attack"],
   hardRiskFlags: ["personal_attack"],
   softRiskFlags: [],
@@ -141,7 +147,7 @@ describe("finalizeClassification", () => {
     });
   });
 
-  it("leaves a level the models already put higher", () => {
+  it("does not let spam settle a danger disagreement", () => {
     const verdict = finalizeClassification({
       firstPass,
       branch: verify,
@@ -150,7 +156,9 @@ describe("finalizeClassification", () => {
     });
 
     expect(verdict).toMatchObject({
-      level: "danger",
+      status: "review_queue",
+      level: null,
+      basis: "danger_disagreement",
       raisedBySpam: false,
       spamSignals: ["promotion"],
     });

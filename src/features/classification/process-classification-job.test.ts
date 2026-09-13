@@ -100,3 +100,16 @@ describe("buildClassificationWorkItems", () => {
     ).toThrow("classification_source_missing");
   });
 });
+
+// Channel-specific settings must not affect public videos or unknown ownership.
+it.each(["public_url", undefined] as const)("does not personalize %s sources", (sourceKind) => {
+  const [item] = buildClassificationWorkItems({
+    channelId: "channel", policyVersion: 1,
+    profile: { protectionLevel:"high", allowedSlang:["별명"], sensitiveTopics:["가족 언급"], hidePersonalAttacks:true, rewriteTone:"friendly", emojiFrequency:"low", allowedContexts:[{phrase:"감자대장",context:"팬들의 애칭"}] },
+    claims:[{itemId:"item",rawCommentId:"raw",workspaceId:"workspace"}],
+    rawComments:[{id:"raw",workspaceId:"workspace",youtubeVideoId:"video",youtubeCommentId:"comment",parentYoutubeCommentId:null,textDisplay:"감자대장",sourceKind}],
+    videos:[{youtubeVideoId:"video",title:"영상"}],
+  });
+  expect(item.profile.allowedSlang).toEqual([]);
+  expect(item.profile.allowedContexts).toBeUndefined();
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretUp, Eye, WarningCircle, X } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, Eye, WarningCircle, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 
 import { AllowExpressionForm } from "./allow-expression-form";
@@ -10,6 +10,7 @@ import { CommentSourceBlock } from "./comment-source-block";
 type SourceRevealProps = {
   commentId: string;
   label?: string;
+  compact?: boolean;
   /**
    * 원문을 펼친 뒤에 이어서 물어볼 것이 있으면 준다. 물어봐도 되는 댓글인지는
    * 서버가 이미 가려서 넘기고, 여기서는 펼쳐진 원문을 넘겨줄 뿐이다.
@@ -21,6 +22,7 @@ export function SourceReveal({
   allowExpressionAction,
   commentId,
   label = "원문 확인",
+  compact = false,
 }: SourceRevealProps) {
   const [warningOpen, setWarningOpen] = useState(false);
   // Kept with the id it was fetched for: a revealed source must never survive a switch
@@ -134,13 +136,14 @@ export function SourceReveal({
   return (
     <>
       <button
-        className="button button-secondary source-reveal-button"
+        className={`button button-secondary source-reveal-button${compact ? " source-reveal-compact" : ""}`}
         ref={revealButtonRef}
         type="button"
         onClick={() => setWarningOpen(true)}
       >
-        <Eye aria-hidden="true" weight="bold" />
+        {!compact && <Eye aria-hidden="true" weight="bold" />}
         {label}
+        {compact && <CaretDown aria-hidden="true" />}
       </button>
 
       {warningOpen ? (

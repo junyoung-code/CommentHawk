@@ -15,6 +15,8 @@
     "test:e2e": "playwright test",
     "test:eval": "vitest run src/evaluation",
     "test:eval:release": "EVALUATION_RELEASE_GATE=true vitest run src/evaluation/release-gate.test.ts",
+    "eval:classification:export": "tsx scripts/export-classification-evaluation.ts",
+    "eval:classification:run": "tsx scripts/run-classification-evaluation.ts",
     "db:start": "supabase start",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",

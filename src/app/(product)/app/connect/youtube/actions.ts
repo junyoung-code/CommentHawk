@@ -33,7 +33,7 @@ export async function configureChannelCommentSyncAction(formData: FormData) {
 
   const { workspaceId } = await requireViewer();
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.rpc("configure_channel_comment_sync", {
+  const { error } = await supabase.rpc("configure_channel_comment_sync_cycle", {
     target_workspace_id: workspaceId,
     target_start_date: startDate,
   });
@@ -49,7 +49,7 @@ export async function configureChannelCommentSyncAction(formData: FormData) {
 export async function requestChannelCommentSyncNowAction() {
   const { workspaceId } = await requireViewer();
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.rpc("request_channel_comment_sync_now", {
+  const { error } = await supabase.rpc("request_channel_comment_sync_cycle_now", {
     target_workspace_id: workspaceId,
   });
 

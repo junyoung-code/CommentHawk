@@ -19,7 +19,10 @@ describe("AppShell", () => {
       </AppShell>,
     );
 
-    expect(screen.getByRole("link", { name: "개요" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "개요" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "CrowdSift YouTube 연결" }),
+    ).toHaveAttribute("href", "/app/connect/youtube");
     expect(
       screen.getByRole("link", { name: "댓글 Inbox" }),
     ).toBeInTheDocument();
@@ -30,7 +33,7 @@ describe("AppShell", () => {
       screen.getByRole("link", { name: "YouTube 연결" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "운영 기준" }),
+      screen.getByRole("link", { name: "댓글 관리 기준" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("결제")).not.toBeInTheDocument();
     expect(screen.queryByText("Instagram")).not.toBeInTheDocument();
@@ -62,7 +65,7 @@ describe("AppShell", () => {
     const developerLink = screen.getByRole("link", { name: "개발자 도구" });
     expect(developerLink).toHaveAttribute("href", "/app/developer-tools");
     expect(links.indexOf(developerLink)).toBeGreaterThan(
-      links.indexOf(screen.getByRole("link", { name: "운영 기준" })),
+      links.indexOf(screen.getByRole("link", { name: "댓글 관리 기준" })),
     );
   });
 

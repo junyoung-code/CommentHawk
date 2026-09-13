@@ -3,22 +3,8 @@ import { PROFILE_LIMITS } from "@/features/classification/schemas";
 import { parsePolicyPhraseLines, type PolicySensitivity } from "./policy-service";
 
 /**
- * 운영 기준 화면에 적은 것을 분류가 읽는 프로필로 옮긴다.
- *
- * 두 저장소가 따로 있었다. 화면은 `phrase_rules`(버전 관리되는 정책)에 쓰고, 분류기는
- * `classification_profiles` 를 읽는다. 그래서 **크리에이터가 화면에서 표현을 등록해도
- * 판단에 닿지 않았다.** 개인화를 내세우는 제품에서 이것이 닿지 않으면 화면이 거짓말을
- * 하는 셈이다.
- *
- * 옮기는 것은 뜻이 정확히 맞는 셋뿐이다. 나머지는 갈 곳이 없고, 없는 자리를 지어내
- * 옮기면 사용자가 적은 것과 판단이 쓰는 것이 어긋난다.
- *
- *   허용할 표현      → allowedSlang      그대로 같은 것이다
- *   전체 민감도      → protectionLevel   값의 이름까지 같다
- *   주의해서 볼 표현  → sensitiveTopics   둘 다 「등급을 올리지 말고 한 번 더 보라」는 뜻이다
- *
- * 맥락 예외·주의/위험 추천·유해 원문 가리기는 분류가 읽는 자리가 없다. 화면에도 그렇게
- * 적어 두었다.
+ * Flat preferences are stored in classification_profiles. Context-specific allowances
+ * remain in versioned phrase_rules and are loaded separately as allowedContexts.
  */
 
 export type ProfileUpdate = {

@@ -1,5 +1,7 @@
-import { ChatCircleDots, CheckCircle, WarningCircle } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, WarningCircle } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
+import Image from "next/image";
+import "@/features/inbox/inbox-shell.css";
 
 import { requireViewer } from "@/features/auth/require-viewer";
 import { CommentInbox } from "@/features/inbox/comment-inbox";
@@ -119,18 +121,18 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
   }
 
   return (
-    <div className="inbox-page">
+    <div className="inbox-page inbox-feed-page">
       <div className="page-heading inbox-page-heading">
         <div>
-          <p>COMMENT REVIEW</p>
+          <p>내 댓글 워크스페이스</p>
           <h1>Comment Inbox</h1>
           <span>
-            AI가 순화한 내용을 먼저 보고, 기본적으로 주의·위험 댓글을
-            검토합니다. 원문은 경고를 확인한 뒤에만 불러옵니다.
+            거친 표현은 덜고, 필요한 의견은 또렷하게.
           </span>
         </div>
-        <div className="inbox-heading-mark" aria-hidden="true">
-          <ChatCircleDots weight="duotone" />
+        <div className="inbox-shifty-legend">
+          <Image src="/brand/shifty-owl-profile.png" width={64} height={64} alt="시프티" />
+          <div><strong>시프티가 표현을 정리했어요</strong><p>거친 표현이 포함된 댓글은<br />시프티가 더 부드럽고 명확하게 정리해요.</p></div>
         </div>
       </div>
 
@@ -191,6 +193,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
         data={{ items: inbox.items, total: inbox.total }}
         filters={{
           reviewLevels: inbox.filters.reviewLevels,
+          classificationStatus: inbox.filters.classificationStatus,
           category: inbox.filters.category,
           videoIds: inbox.filters.videoIds,
           analysisState: inbox.filters.analysisState,
@@ -200,6 +203,8 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
           search: inbox.filters.search,
           limit: inbox.filters.limit,
           offset: inbox.filters.offset,
+          period: inbox.filters.period,
+          sort: inbox.filters.sort,
         }}
         moderationAction={requestYouTubeModerationAction}
         selectedCommentId={

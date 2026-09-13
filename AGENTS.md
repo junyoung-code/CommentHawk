@@ -19,6 +19,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Skill usage
 
+- When the user asks for a new task, thread, or session, create it in the existing `/Users/junyoung/Desktop/CrowdSift` project directory using the local environment. Do not create a worktree or separate project folder unless the user explicitly requests one.
+
 - Do not invoke `superpowers:using-superpowers` automatically at the start of every turn.
 - Use Superpowers skills only when the user explicitly requests one or when the task clearly matches a skill and materially benefits from its workflow.
 - Do not load Superpowers skills for simple questions, status checks, file inspection, or straightforward commands.

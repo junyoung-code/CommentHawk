@@ -41,3 +41,16 @@ export const toClassificationProfile = (
 
   return parsed.success ? parsed.data : DEFAULT_CLASSIFICATION_PROFILE;
 };
+
+/** Context rules stay in the versioned policy; never flatten them into unconditional slang. */
+export function withPolicyContexts(
+  profile: ClassificationProfile,
+  rules: { phrase: string; context_note: string | null }[],
+): ClassificationProfile {
+  const contexts = rules.map(rule => ({ phrase: rule.phrase, context: rule.context_note ?? "" }))
+    .filter(rule => rule.phrase.length > 0 && rule.phrase.length <= 40 && rule.context.length > 0 && rule.context.length <= 200)
+    .slice(0, 50);
+  return { ...profile, allowedContexts: contexts,
+    allowedSlang: profile.allowedSlang.filter(phrase => !contexts.some(rule => rule.phrase === phrase)),
+  };
+}

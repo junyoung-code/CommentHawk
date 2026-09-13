@@ -34,6 +34,9 @@ const clientReturning = (parsed: unknown) =>
 const validOutput = {
   candidateLevel: "caution",
   certainty: "borderline",
+  intent: "criticism",
+  target: "content",
+  ambiguityReasons: [],
   feedbackPresent: true,
   locationOrScheduleMention: false,
   sensitiveTopicMatched: false,

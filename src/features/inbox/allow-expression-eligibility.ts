@@ -10,7 +10,12 @@ export const canAllowChannelExpression = (item: InboxItem): boolean => {
   // 남의 영상에 달린 말로 내 채널의 말투를 정할 수는 없다.
   if (item.sourceKind === "public_url") return false;
   // 위험을 한 번에 푸는 버튼은 두지 않는다.
-  if (item.reviewLevel !== "caution") return false;
+  if (
+    item.reviewLevel !== "caution" &&
+    item.classificationStatus !== "review_queue"
+  ) {
+    return false;
+  }
   // 원문이 사라졌으면 무엇을 풀어 주는지 보여 줄 수 없다.
   return item.sourceAvailable;
 };

@@ -18,6 +18,9 @@ const clientReturning = (parsed: unknown) => {
 const validOutput = {
   verdictLevel: "caution",
   certainty: "clear",
+  intent: "criticism",
+  target: "content",
+  ambiguityReasons: [],
   reasonCodes: ["vulgarity"],
   hardRiskFlags: [],
   softRiskFlags: ["vulgarity"],

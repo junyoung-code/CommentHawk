@@ -50,6 +50,7 @@ describe("Classification V1 fixture clients", () => {
       "danger",
       "다음 방송 장소로 찾아가서 가만두지 않겠다.",
     );
+    const protectedSource = item("protected-source", "source harmful text");
     const savedFirstPass = new Map<
       string,
       Parameters<ClassificationJobRepository["saveFirstPass"]>[1]
@@ -65,7 +66,7 @@ describe("Classification V1 fixture clients", () => {
     >();
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const repository: ClassificationJobRepository = {
-      claimItems: vi.fn(async () => [safe, danger]),
+      claimItems: vi.fn(async () => [safe, danger, protectedSource]),
       loadState: vi.fn(async () => ({
         firstPass: null,
         branch: null,
@@ -91,8 +92,8 @@ describe("Classification V1 fixture clients", () => {
       failItem: vi.fn(async () => undefined),
       refreshJobProgress: vi.fn(async () => ({
         status: "succeeded" as const,
-        total: 2,
-        completed: 2,
+        total: 3,
+        completed: 3,
         failed: 0,
         remaining: 0,
       })),
@@ -105,7 +106,7 @@ describe("Classification V1 fixture clients", () => {
       repository,
     }).processChunk("fixture-job", 5);
 
-    expect(progress).toMatchObject({ status: "succeeded", completed: 2 });
+    expect(progress).toMatchObject({ status: "succeeded", completed: 3 });
     expect(fetchSpy).not.toHaveBeenCalled();
     // 순화까지 픽스처로 돈다. 외부 요청은 여전히 한 건도 나가지 않는다.
     expect(savedRewrites.get("danger")).toBeUndefined();
@@ -133,6 +134,11 @@ describe("Classification V1 fixture clients", () => {
       basis: "instant_safe",
     });
     expect(savedVerdicts.get("danger")?.verdict).toMatchObject({
+      status: "decided",
+      level: "danger",
+      hideSource: true,
+    });
+    expect(savedVerdicts.get("protected-source")?.verdict).toMatchObject({
       status: "decided",
       level: "danger",
       hideSource: true,

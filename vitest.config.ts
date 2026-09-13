@@ -9,7 +9,15 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: [...configDefaults.exclude, "e2e/**/*.spec.ts"],
+    exclude: [
+      ...configDefaults.exclude,
+      "e2e/**/*.spec.ts",
+      ".worktrees/**",
+      ".local-archive/**",
+      "output/**",
+      "outputs/**",
+      "tmp/**",
+    ],
     setupFiles: ["./src/test/setup.ts"],
   },
 });

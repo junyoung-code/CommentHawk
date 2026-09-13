@@ -44,6 +44,12 @@ yarn-error.log*
 .superpowers/
 .worktrees/
 
+# local recovery archives and generated artifacts
+.local-archive/
+/output/
+/outputs/
+/tmp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

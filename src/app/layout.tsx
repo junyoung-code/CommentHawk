@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 
-import { ProductThemeScript } from "@/features/theme/product-theme-script";
+import { PRODUCT_THEME_BOOTSTRAP_SCRIPT } from "@/features/theme/product-theme-script";
 
 import "./globals.css";
 
@@ -18,11 +19,16 @@ export default function RootLayout({
     <html
       lang="ko"
       data-scroll-behavior="smooth"
-      data-theme="light"
+      data-theme="dark"
       suppressHydrationWarning
     >
       <head>
-        <ProductThemeScript />
+        <Script
+          data-product-theme-bootstrap=""
+          dangerouslySetInnerHTML={{ __html: PRODUCT_THEME_BOOTSTRAP_SCRIPT }}
+          id="product-theme-bootstrap"
+          strategy="beforeInteractive"
+        />
       </head>
       <body>{children}</body>
     </html>

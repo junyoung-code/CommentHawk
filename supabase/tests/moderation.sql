@@ -207,7 +207,8 @@ select ok(
     'succeeded',
     204,
     now(),
-    null
+    null,
+    50
   ),
   'a running request can be completed exactly once'
 );
@@ -234,7 +235,8 @@ select ok(
     'succeeded',
     204,
     now(),
-    null
+    null,
+    50
   ),
   'replaying the stored provider result is idempotent'
 );

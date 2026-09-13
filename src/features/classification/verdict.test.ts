@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { decideVerdict } from "./verdict";
 import type {
+  AmbiguityReason,
+  CommentIntent,
+  CommentTarget,
   HardRiskFlag,
   RiskLevel,
   SoftRiskFlag,
@@ -11,6 +14,9 @@ import type {
 const cleanTerra: TerraVerdict = {
   verdictLevel: "safe",
   certainty: "clear",
+  intent: "neutral",
+  target: "none",
+  ambiguityReasons: [],
   reasonCodes: [],
   hardRiskFlags: [],
   softRiskFlags: [],
@@ -25,12 +31,18 @@ const verdict = ({
   candidateLevel = "safe",
   candidateHardRiskFlags = [],
   candidateSoftRiskFlags = [],
+  candidateIntent = "neutral",
+  candidateTarget = "none",
+  candidateAmbiguityReasons = [],
   terra,
   moderationMinimumLevel = null,
 }: {
   candidateLevel?: RiskLevel;
   candidateHardRiskFlags?: HardRiskFlag[];
   candidateSoftRiskFlags?: SoftRiskFlag[];
+  candidateIntent?: CommentIntent;
+  candidateTarget?: CommentTarget;
+  candidateAmbiguityReasons?: AmbiguityReason[];
   terra?: Partial<TerraVerdict>;
   moderationMinimumLevel?: RiskLevel | null;
 }) =>
@@ -39,6 +51,9 @@ const verdict = ({
       level: candidateLevel,
       hardRiskFlags: candidateHardRiskFlags,
       softRiskFlags: candidateSoftRiskFlags,
+      intent: candidateIntent,
+      target: candidateTarget,
+      ambiguityReasons: candidateAmbiguityReasons,
     },
     terra: { ...cleanTerra, ...terra },
     moderationMinimumLevel,
@@ -60,7 +75,7 @@ describe("final verdict", () => {
   });
 
   describe("when the two passes disagree", () => {
-    it("takes the protective side once danger is on the table", () => {
+    it("queues a danger disagreement without a non-negotiable signal", () => {
       for (const [candidateLevel, verdictLevel] of [
         ["danger", "caution"],
         ["safe", "danger"],
@@ -68,8 +83,9 @@ describe("final verdict", () => {
       ] as const) {
         const outcome = verdict({ candidateLevel, terra: { verdictLevel } });
 
-        expect(outcome.level).toBe("danger");
-        expect(outcome.basis).toBe("danger_in_either");
+        expect(outcome.level).toBeNull();
+        expect(outcome.status).toBe("review_queue");
+        expect(outcome.basis).toBe("danger_disagreement");
       }
     });
 
@@ -96,7 +112,7 @@ describe("final verdict", () => {
       expect(outcome.basis).toBe("protective_on_boundary");
     });
 
-    it("never lets the boundary rule reach danger", () => {
+    it("never lets the boundary rule decide a danger disagreement", () => {
       // The lowering path exists for slang and memes. A confirmed attack must not
       // travel through it, whatever the verifier put in its level field.
       //
@@ -109,8 +125,8 @@ describe("final verdict", () => {
         terra: { verdictLevel: "safe", certainty: "clear" },
       });
 
-      expect(outcome.level).toBe("danger");
-      expect(outcome.basis).toBe("danger_in_either");
+      expect(outcome.level).toBeNull();
+      expect(outcome.basis).toBe("danger_disagreement");
     });
   });
 
@@ -159,6 +175,43 @@ describe("final verdict", () => {
   });
 
   describe("when the verifier could not decide", () => {
+    it("queues praise that may be sarcasm even when both chose safe", () => {
+      const outcome = verdict({
+        candidateIntent: "ambiguous",
+        candidateTarget: "creator_behavior",
+        candidateAmbiguityReasons: ["possible_sarcasm"],
+        terra: {
+          verdictLevel: "safe",
+          intent: "ambiguous",
+          target: "creator_behavior",
+          ambiguityReasons: ["possible_sarcasm"],
+        },
+      });
+
+      expect(outcome).toMatchObject({
+        status: "review_queue",
+        level: null,
+        basis: "ambiguous_sarcasm",
+      });
+    });
+
+    it("keeps a context-free neutral reaction safe", () => {
+      const outcome = verdict({
+        candidateAmbiguityReasons: ["missing_context"],
+        terra: {
+          verdictLevel: "safe",
+          certainty: "unclear",
+          ambiguityReasons: ["missing_context"],
+        },
+      });
+
+      expect(outcome).toMatchObject({
+        status: "decided",
+        level: "safe",
+        basis: "both_safe_despite_uncertainty",
+      });
+    });
+
     it("leaves the level empty instead of guessing", () => {
       const outcome = verdict({
         candidateLevel: "caution",

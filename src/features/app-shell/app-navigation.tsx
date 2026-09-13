@@ -2,7 +2,6 @@
 
 import {
   ChatCircleDots,
-  House,
   SlidersHorizontal,
   Toolbox,
   YoutubeLogo,
@@ -11,7 +10,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navigationItems = [
-  { href: "/app", label: "개요", icon: House },
   { href: "/app/inbox", label: "댓글 Inbox", icon: ChatCircleDots },
   {
     href: "/app/connect/youtube",
@@ -20,22 +18,20 @@ const navigationItems = [
   },
   {
     href: "/app/settings/moderation",
-    label: "운영 기준",
+    label: "댓글 관리 기준",
     icon: SlidersHorizontal,
   },
 ] as const;
 
 export const isNavigationItemActive = (pathname: string, href: string) =>
-  href === "/app"
-    ? pathname === href
-    : pathname === href || pathname.startsWith(`${href}/`);
+  pathname === href || pathname.startsWith(`${href}/`);
 
 export function AppNavigation({
   developerToolsEnabled = false,
 }: {
   developerToolsEnabled?: boolean;
 }) {
-  const pathname = usePathname() ?? "/app";
+  const pathname = usePathname() ?? "/app/connect/youtube";
   const items = developerToolsEnabled
     ? [
         ...navigationItems,

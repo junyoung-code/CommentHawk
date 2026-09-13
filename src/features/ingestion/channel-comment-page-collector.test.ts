@@ -39,6 +39,54 @@ const provider = (
 });
 
 describe("collectChannelCommentPage", () => {
+  it("caps parents and replies together and resumes inside the same provider page", async () => {
+    const listChannelCommentThreads = vi.fn().mockResolvedValue({
+      items: [
+        {
+          youtubeVideoId: "video-1",
+          topLevelComment: comment("parent-1"),
+          inlineReplies: Array.from({ length: 105 }, (_, index) =>
+            comment(`reply-${index + 1}`, { parentId: "parent-1" }),
+          ),
+          totalReplyCount: 105,
+        },
+      ],
+      nextPageToken: "provider-next",
+      quotaUnitsUsed: 1,
+      heldItems: [],
+      invalidItemCount: 0,
+    });
+    const source = provider({ listChannelCommentThreads });
+
+    const first = await collectChannelCommentPage({
+      provider: source,
+      youtubeChannelId: "channel-1",
+      pageToken: null,
+      boundaryAt: "2026-08-01T00:00:00+09:00",
+      kind: "backfill_recent",
+      maxComments: 100,
+    });
+    const second = await collectChannelCommentPage({
+      provider: source,
+      youtubeChannelId: "channel-1",
+      pageToken: first.nextPageToken,
+      boundaryAt: "2026-08-01T00:00:00+09:00",
+      kind: "backfill_recent",
+      maxComments: 100,
+    });
+
+    expect(first.comments).toHaveLength(100);
+    expect(first.nextPageToken).toMatch(/^crowdsift:v1:/);
+    expect(first.reachedBoundary).toBe(false);
+    expect(second.comments).toHaveLength(6);
+    expect(second.nextPageToken).toBe("provider-next");
+    expect(listChannelCommentThreads).toHaveBeenNthCalledWith(2, {
+      youtubeChannelId: "channel-1",
+      maxResults: 100,
+      pageToken: undefined,
+    });
+  });
+
   it("keeps the selected Korean boundary instant and stops at an older top-level comment", async () => {
     const source = provider({
       listChannelCommentThreads: vi.fn().mockResolvedValue({

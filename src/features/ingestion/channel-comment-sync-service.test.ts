@@ -747,7 +747,7 @@ describe("channel comment sync Supabase adapter", () => {
     expect(requireViewer).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenNthCalledWith(
       1,
-      "claim_channel_comment_sync_work_for_workspace",
+      "claim_channel_comment_sync_cycle_for_workspace",
       {
         target_workspace_id: "workspace-1",
         target_requesting_user_id: "user-1",
@@ -756,7 +756,7 @@ describe("channel comment sync Supabase adapter", () => {
     );
     expect(rpc).toHaveBeenNthCalledWith(
       2,
-      "claim_channel_comment_sync_work",
+      "claim_channel_comment_sync_cycle",
       {
         target_limit: 1,
         target_lease_seconds: 240,
@@ -936,6 +936,10 @@ describe("channel comment sync Supabase adapter", () => {
       target_analyzed_count: 2,
       target_quota_units_used: 7,
       target_reply_cursor: null,
+      target_incremental_next_page_token: null,
+      target_incremental_reached_boundary: false,
+      target_backfill_next_page_token: null,
+      target_backfill_reached_boundary: false,
     });
     vi.doUnmock("server-only");
   });

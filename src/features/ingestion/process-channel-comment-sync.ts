@@ -18,6 +18,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
 import { collectChannelCommentPage } from "./channel-comment-page-collector";
+import { createChannelCommentSyncCycleService } from "./channel-comment-sync-cycle-service";
 import {
   createChannelCommentSyncService,
   type ChannelSyncBatchResult,
@@ -128,6 +129,13 @@ export const buildCompleteChannelSyncRunRpcArgs = (
   target_analyzed_count: input.analyzedCount,
   target_quota_units_used: input.quotaUnitsUsed,
   target_reply_cursor: null,
+  target_incremental_next_page_token:
+    input.incrementalNextPageToken ?? null,
+  target_incremental_reached_boundary:
+    input.incrementalReachedBoundary ?? false,
+  target_backfill_next_page_token: input.backfillNextPageToken ?? null,
+  target_backfill_reached_boundary:
+    input.backfillReachedBoundary ?? false,
 });
 
 export const buildCompleteReplyReconciliationRunRpcArgs = (
@@ -281,10 +289,15 @@ const toClaim = (row: {
   page_token: string | null;
   last_successful_sync_at: string | null;
   incremental_scan_started_at: string | null;
+  incremental_page_token: string | null;
+  backfill_page_token: string | null;
+  backfill_status: string;
+  cycle_budget: number;
 }): ChannelSyncClaim => {
   if (
     row.run_kind !== "backfill_recent" &&
     row.run_kind !== "incremental" &&
+    row.run_kind !== "sync_cycle" &&
     row.run_kind !== "reply_reconciliation"
   ) {
     throw new ChannelSyncProcessingError("unsupported_sync_kind");
@@ -302,6 +315,17 @@ const toClaim = (row: {
     pageToken: row.page_token,
     lastSuccessfulSyncAt: row.last_successful_sync_at,
     incrementalScanStartedAt: row.incremental_scan_started_at,
+    incrementalPageToken: row.incremental_page_token,
+    backfillPageToken: row.backfill_page_token,
+    backfillStatus:
+      row.backfill_status === "completed"
+        ? "completed"
+        : row.backfill_status === "running"
+          ? "running"
+          : row.backfill_status === "failed"
+            ? "failed"
+            : "pending",
+    cycleBudget: row.cycle_budget,
   };
 };
 
@@ -315,13 +339,13 @@ const claimOne = async ({
   const result = workspaceId
     ? await (async () => {
         const viewer = await assertWorkspaceViewer(workspaceId);
-        return admin.rpc("claim_channel_comment_sync_work_for_workspace", {
+        return admin.rpc("claim_channel_comment_sync_cycle_for_workspace", {
           target_workspace_id: workspaceId,
           target_requesting_user_id: viewer.userId,
           target_lease_seconds: LEASE_SECONDS,
         });
       })()
-    : await admin.rpc("claim_channel_comment_sync_work", {
+    : await admin.rpc("claim_channel_comment_sync_cycle", {
         target_limit: 1,
         target_lease_seconds: LEASE_SECONDS,
       });
@@ -430,14 +454,14 @@ const createRepository = (
 
   async completeRun(input) {
     const { error } = await admin.rpc(
-      "complete_channel_comment_sync_run",
+      "complete_channel_comment_sync_cycle_run",
       buildCompleteChannelSyncRunRpcArgs(input),
     );
     if (error) throw error;
   },
 
   async failRun(input) {
-    const { error } = await admin.rpc("fail_channel_comment_sync_run", {
+    const { error } = await admin.rpc("fail_channel_comment_sync_cycle_run", {
       target_run_id: input.runId,
       target_claim_token: input.claimToken,
       target_error_code: input.errorCode,
@@ -522,7 +546,7 @@ const failClaim = async (
 ) => {
   const processingError = toChannelSyncProcessingError(error);
   const { error: failError } = await admin.rpc(
-    "fail_channel_comment_sync_run",
+    "fail_channel_comment_sync_cycle_run",
     {
       target_run_id: claim.runId,
       target_claim_token: claim.claimToken,
@@ -609,6 +633,23 @@ export async function processOneChannelSyncWork(input: {
         source: {
           listReplies: (replyInput) =>
             provider.listReplies({ ...replyInput, tokens }),
+        },
+      }).process(claim);
+    }
+
+    if (claim.runKind === "sync_cycle") {
+      return await createChannelCommentSyncCycleService({
+        repository,
+        providerMode: environment.EXTERNAL_PROVIDER_MODE,
+        analysisConfigurationKey,
+        source: {
+          collectPage: (collectionInput) =>
+            collectChannelCommentPage({
+              ...collectionInput,
+              provider,
+              tokens,
+            }),
+          listVideosByIds: (videoIds) => provider.listVideosByIds(videoIds),
         },
       }).process(claim);
     }

@@ -20,12 +20,12 @@ describe("product theme", () => {
     expect(isProductTheme(null)).toBe(false);
   });
 
-  it("reads the current valid document theme and otherwise falls back to light", () => {
+  it("reads the current valid document theme and otherwise falls back to dark", () => {
     document.documentElement.dataset.theme = "dark";
     expect(readProductTheme()).toBe("dark");
 
     document.documentElement.dataset.theme = "unexpected";
-    expect(readProductTheme()).toBe("light");
+    expect(readProductTheme()).toBe("dark");
   });
 
   it("applies and persists the selected theme", () => {

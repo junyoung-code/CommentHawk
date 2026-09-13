@@ -1,5 +1,8 @@
 import {
   NON_NEGOTIABLE_RISK_FLAGS,
+  type AmbiguityReason,
+  type CommentIntent,
+  type CommentTarget,
   type HardRiskFlag,
   type RecommendedAction,
   type RiskLevel,
@@ -24,6 +27,14 @@ export type VerdictBasis =
    * 달지 않았다. 사람이 볼 것이 없어 그대로 확정한다.
    */
   | "both_safe_despite_uncertainty"
+  /** 칭찬과 비꼼을 가를 근거가 부족하다. */
+  | "ambiguous_sarcasm"
+  /** 은어가 감탄인지 공격인지 가를 근거가 부족하다. */
+  | "ambiguous_slang"
+  /** 답글이나 앞선 대화가 없어 뜻을 정할 수 없다. */
+  | "missing_context"
+  /** 강한 위험 근거 없이 한 판단만 위험이라고 했다. */
+  | "danger_disagreement"
   /** 두 판단이 같았다. */
   | "both_agreed"
   /** 한쪽이 위험이라 높은 쪽을 택했다. */
@@ -117,6 +128,9 @@ export type CandidateJudgement = {
   level: RiskLevel;
   hardRiskFlags: HardRiskFlag[];
   softRiskFlags: SoftRiskFlag[];
+  intent?: CommentIntent;
+  target?: CommentTarget;
+  ambiguityReasons?: AmbiguityReason[];
 };
 
 /** 어느 쪽도 위험·주의 신호를 달지 않았는지. */
@@ -125,6 +139,38 @@ const noRiskSignals = (candidate: CandidateJudgement, terra: TerraVerdict) =>
   candidate.softRiskFlags.length === 0 &&
   terra.hardRiskFlags.length === 0 &&
   terra.softRiskFlags.length === 0;
+
+const ambiguityBasis = (
+  candidate: CandidateJudgement,
+  terra: TerraVerdict,
+): Extract<
+  VerdictBasis,
+  "ambiguous_sarcasm" | "ambiguous_slang" | "missing_context"
+> | null => {
+  const reasons = new Set([
+    ...(candidate.ambiguityReasons ?? []),
+    ...(terra.ambiguityReasons ?? []),
+  ]);
+
+  if (reasons.has("possible_sarcasm")) return "ambiguous_sarcasm";
+  if (reasons.has("unclear_slang_polarity")) return "ambiguous_slang";
+  if (reasons.has("missing_context")) return "missing_context";
+  return null;
+};
+
+const emptyReactionCanStaySafe = (
+  candidate: CandidateJudgement,
+  terra: TerraVerdict,
+  moderationMinimumLevel: RiskLevel | null,
+) =>
+  candidate.level === "safe" &&
+  terra.verdictLevel === "safe" &&
+  !moderationMinimumLevel &&
+  noRiskSignals(candidate, terra) &&
+  (candidate.intent ?? "neutral") === "neutral" &&
+  (terra.intent ?? "neutral") === "neutral" &&
+  ["none", "unclear"].includes(candidate.target ?? "unclear") &&
+  ["none", "unclear"].includes(terra.target ?? "unclear");
 
 export const decideVerdict = ({
   candidate,
@@ -159,6 +205,40 @@ export const decideVerdict = ({
     };
   }
 
+  // 위험 불일치는 오탐 비용이 가장 큰 자리다. 완화 불가 신호가 확인되지 않았다면
+  // 원문은 감춘 채 사람이 확정한다.
+  if (
+    candidate.level !== terra.verdictLevel &&
+    (candidate.level === "danger" || terra.verdictLevel === "danger")
+  ) {
+    return {
+      ...shared,
+      status: "review_queue",
+      level: null,
+      basis: "danger_disagreement",
+      allowRewrite: false,
+      hideSource: true,
+      raisedByModeration: false,
+    };
+  }
+
+  const ambiguous = ambiguityBasis(candidate, terra);
+  if (ambiguous && !(ambiguous === "missing_context" && emptyReactionCanStaySafe(
+    candidate,
+    terra,
+    moderationMinimumLevel,
+  ))) {
+    return {
+      ...shared,
+      status: "review_queue",
+      level: null,
+      basis: ambiguous,
+      allowRewrite: false,
+      hideSource: true,
+      raisedByModeration: false,
+    };
+  }
+
   // 확신하지 못한 것과 볼 것이 없는 것은 다르다.
   //
   // 「ㅋㅋㅋㅋㅋ」이나 「ㅇㅇ」에 Terra 가 확신을 내지 못하는 것은 판단이 어려워서가
@@ -167,10 +247,7 @@ export const decideVerdict = ({
   // 달지 않았고, 무료 필터도 걸지 않았다면 넘길 것이 없다.
   if (
     terra.certainty === "unclear" &&
-    candidate.level === "safe" &&
-    terra.verdictLevel === "safe" &&
-    !moderationMinimumLevel &&
-    noRiskSignals(candidate, terra)
+    emptyReactionCanStaySafe(candidate, terra, moderationMinimumLevel)
   ) {
     return {
       ...shared,

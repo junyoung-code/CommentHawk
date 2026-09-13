@@ -1,7 +1,8 @@
+import "@/features/inbox/inbox-shell.css";
+
 import {
   ArrowRight,
   CheckCircle,
-  LinkBreak,
   ShieldCheck,
   YoutubeLogo,
 } from "@phosphor-icons/react/dist/ssr";
@@ -12,11 +13,14 @@ import { getKoreanToday } from "@/features/ingestion/channel-sync-contract";
 import {
   ChannelSyncProgressPanel,
   ChannelSyncSetup,
+  CollectionTrendChart,
+  type ChannelCollectionPoint,
 } from "@/features/ingestion/channel-sync-progress-panel";
 import {
   reconcileChannelSyncConnection,
   toChannelSyncProgress,
 } from "@/features/ingestion/channel-sync-progress";
+import styles from "@/features/ingestion/youtube-connection.module.css";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 import {
@@ -38,12 +42,12 @@ const getErrorMessage = (
     case "invalid_start_date":
       return "오늘 또는 그 이전의 올바른 시작 날짜를 선택해 주세요.";
     case "sync_configuration_failed":
-      return "댓글 동기화 시작 날짜를 저장하지 못했습니다. 다시 시도해 주세요.";
+      return "댓글 수집 시작 날짜를 저장하지 못했습니다. 다시 시도해 주세요.";
     case "sync_request_failed":
       return "댓글 동기화를 요청하지 못했습니다. 잠시 후 다시 시도해 주세요.";
     case "sync_toggle_invalid":
     case "sync_toggle_failed":
-      return "자동 동기화 상태를 변경하지 못했습니다. 다시 시도해 주세요.";
+      return "자동 댓글 수집 상태를 변경하지 못했습니다. 다시 시도해 주세요.";
     case "channel_required":
       return "사용할 채널 하나를 선택해 주세요.";
     case "revoke_failed":
@@ -60,6 +64,25 @@ const getErrorMessage = (
   }
 };
 
+const getSuccessMessage = (
+  parameters: Record<string, string | string[] | undefined>,
+) => {
+  switch (parameters.sync) {
+    case "started":
+      return "댓글 수집을 시작했습니다.";
+    case "requested":
+      return "새 댓글 동기화를 요청했습니다.";
+    case "enabled":
+      return "자동 댓글 수집을 켰습니다.";
+    case "paused":
+      return "자동 댓글 수집을 껐습니다.";
+    default:
+      return parameters.connected || parameters.selected
+        ? "YouTube 연결 상태를 저장했습니다."
+        : null;
+  }
+};
+
 export default async function YouTubeConnectionPage({
   searchParams,
 }: YouTubeConnectionPageProps) {
@@ -70,6 +93,7 @@ export default async function YouTubeConnectionPage({
     { data: connection, error: connectionError },
     { data: candidates, error: candidatesError },
     { data: syncSetting, error: syncSettingError },
+    { data: collectionStatsRows, error: collectionStatsError },
   ] = await Promise.all([
     supabase
       .from("youtube_connection_overview")
@@ -88,9 +112,17 @@ export default async function YouTubeConnectionPage({
       )
       .eq("workspace_id", workspaceId)
       .maybeSingle(),
+    supabase.rpc("get_youtube_connection_collection_stats", {
+      target_workspace_id: workspaceId,
+    }),
   ]);
 
-  if (connectionError || candidatesError || syncSettingError) {
+  if (
+    connectionError ||
+    candidatesError ||
+    syncSettingError ||
+    collectionStatsError
+  ) {
     throw new Error("YouTube connection could not be loaded");
   }
 
@@ -120,69 +152,68 @@ export default async function YouTubeConnectionPage({
     connection?.status,
   );
   const errorMessage = getErrorMessage(parameters);
+  const successMessage = getSuccessMessage(parameters);
   const isDisconnected =
     !connection ||
     connection.status === "disconnected" ||
     connection.status === "revoked";
   const reconnectRequired = connection?.status === "revoked";
+  const collectionPoints: ChannelCollectionPoint[] = (
+    collectionStatsRows ?? []
+  ).map((row) => ({
+    date: row.bucket_date,
+    cumulativeCount: Number(row.cumulative_count),
+  }));
+  const totalCommentCount = Number(collectionStatsRows?.[0]?.total_count ?? 0);
+  const maxDate = getKoreanToday();
 
   return (
-    <div className="youtube-connection-page">
-      <div className="page-heading">
-        <div>
-          <p>YOUTUBE CONNECTION</p>
-          <h1>YouTube 채널 연결</h1>
-          <span>
-            CrowdSift 로그인과 별도로, 크리에이터가 소유한 채널의 읽기 권한을
-            연결합니다.
-          </span>
-        </div>
-      </div>
+    <div className={`${styles.page} youtube-connection-page`}>
+      <header className={styles.pageTitle}>
+        <span aria-hidden="true" className={styles.youtubeTitleIcon}>
+          <YoutubeLogo weight="fill" />
+        </span>
+        <h1>YouTube 연결</h1>
+      </header>
 
       {errorMessage ? (
-        <p className="form-message form-message-error" role="alert">
+        <p className={styles.pageError} role="alert">
           {errorMessage}
         </p>
       ) : null}
 
-      {parameters.connected || parameters.selected || parameters.sync ? (
-        <p className="form-message form-message-success" role="status">
-          {parameters.sync
-            ? "댓글 동기화 설정을 저장했습니다."
-            : "YouTube 연결 상태를 저장했습니다."}
+      {successMessage ? (
+        <p className={styles.pageSuccess} role="status">
+          {successMessage}
         </p>
       ) : null}
 
       {isDisconnected ? (
-        <section className="youtube-connect-card">
-          <span className="youtube-connect-icon" aria-hidden="true">
+        <section className={styles.statePanel}>
+          <span className={styles.stateIcon} aria-hidden="true">
             <YoutubeLogo weight="fill" />
           </span>
           <div>
-            <p>{reconnectRequired ? "재연결 필요" : "읽기 권한부터 시작합니다"}</p>
+            <p>{reconnectRequired ? "재연결 필요" : "YOUTUBE CONNECTION"}</p>
             <h2>
               {reconnectRequired
-                ? "YouTube 권한이 만료되었거나 해제되었습니다"
+                ? "YouTube 권한을 다시 연결해 주세요"
                 : "내 YouTube 채널을 연결하세요"}
             </h2>
             <span>
               {reconnectRequired
-                ? "자동 동기화를 다시 시작하려면 Google에서 채널 권한을 갱신해 주세요. 이미 수집한 댓글과 분석 기록은 그대로 보존됩니다."
-                : "채널과 영상 목록, 선택한 영상의 공개 댓글을 가져오기 위한 최소 권한만 요청합니다. 실제 댓글 숨김 권한은 지금 요청하지 않습니다."}
+                ? "자동 댓글 수집을 다시 시작하려면 Google에서 채널 권한을 갱신해 주세요. 이미 수집한 댓글과 분석 기록은 그대로 보존됩니다."
+                : "채널과 영상, 공개 댓글을 읽는 데 필요한 최소 권한만 요청합니다. 댓글 숨김이나 삭제는 사용자의 확인 없이 실행하지 않습니다."}
             </span>
           </div>
-          <Link
-            className="button button-primary"
-            href="/api/youtube/oauth/start"
-          >
-            {reconnectRequired ? "Google에서 다시 연결하기" : "Google에서 연결하기"}
+          <Link className={styles.primaryButton} href="/api/youtube/oauth/start">
+            {reconnectRequired ? "Google에서 다시 연결" : "Google에서 연결"}
             <ArrowRight aria-hidden="true" weight="bold" />
           </Link>
-          <div className="permission-note">
+          <div className={styles.permissionNote}>
             <ShieldCheck aria-hidden="true" weight="duotone" />
             <span>
-              OAuth token은 서버에서 AES-256-GCM으로 암호화되며 브라우저에
-              노출되지 않습니다.
+              OAuth token은 서버에서 암호화하며 브라우저에 노출하지 않습니다.
             </span>
           </div>
         </section>
@@ -191,7 +222,7 @@ export default async function YouTubeConnectionPage({
       {connection?.status === "pending_channel_selection" &&
       candidates &&
       candidates.length > 1 ? (
-        <section className="channel-selection-card">
+        <section className={styles.selectionPanel}>
           <div>
             <p>채널 선택</p>
             <h2>관리할 채널 하나를 선택하세요</h2>
@@ -200,18 +231,30 @@ export default async function YouTubeConnectionPage({
             </span>
           </div>
           <form action={selectYouTubeChannelAction}>
-            <fieldset className="channel-options">
+            <fieldset className={styles.channelOptions}>
               <legend className="sr-only">YouTube 채널 후보</legend>
               {candidates.map((candidate) => (
                 <label key={candidate.youtube_channel_id}>
                   <input
-                    type="radio"
                     name="channelId"
-                    value={candidate.youtube_channel_id}
                     required
+                    type="radio"
+                    value={candidate.youtube_channel_id}
                   />
-                  <span className="channel-avatar" aria-hidden="true">
-                    {candidate.title.slice(0, 1).toUpperCase()}
+                  <span
+                    aria-hidden="true"
+                    className={styles.candidateAvatar}
+                    style={
+                      candidate.thumbnail_url
+                        ? {
+                            backgroundImage: `url(${candidate.thumbnail_url})`,
+                          }
+                        : undefined
+                    }
+                  >
+                    {candidate.thumbnail_url
+                      ? null
+                      : candidate.title.slice(0, 1).toUpperCase()}
                   </span>
                   <span>
                     <strong>{candidate.title}</strong>
@@ -220,7 +263,7 @@ export default async function YouTubeConnectionPage({
                 </label>
               ))}
             </fieldset>
-            <button className="button button-primary" type="submit">
+            <button className={styles.primaryButton} type="submit">
               이 채널 사용하기
               <ArrowRight aria-hidden="true" weight="bold" />
             </button>
@@ -229,66 +272,99 @@ export default async function YouTubeConnectionPage({
       ) : null}
 
       {connection?.status === "connected" && selectedChannel ? (
-        <section className="connected-channel-card">
-          <div className="connected-channel-summary">
-            <span className="connected-check" aria-hidden="true">
-              <CheckCircle weight="fill" />
+        <section
+          aria-label={`${selectedChannel.title} YouTube 연결 관리`}
+          className={styles.connectedLayout}
+        >
+          <div className={styles.channelColumn}>
+            <span
+              aria-label={`${selectedChannel.title} 채널 프로필`}
+              className={styles.channelAvatar}
+              role="img"
+              style={
+                selectedChannel.thumbnail_url
+                  ? {
+                      backgroundImage: `url(${selectedChannel.thumbnail_url})`,
+                    }
+                  : undefined
+              }
+            >
+              {selectedChannel.thumbnail_url ? null : (
+                <YoutubeLogo aria-hidden="true" weight="fill" />
+              )}
             </span>
-            <div>
-              <p>연결된 채널</p>
+            <div className={styles.channelIdentity}>
               <h2>{selectedChannel.title}</h2>
-              <span>{selectedChannel.handle ?? "YouTube 채널"}</span>
+              <p>{selectedChannel.handle ?? "YouTube 채널"}</p>
+              <span className={styles.connectedStatus}>
+                <CheckCircle aria-hidden="true" weight="fill" />
+                연결됨
+              </span>
+            </div>
+
+            <div className={styles.collectionSummary}>
+              <span>가져온 댓글</span>
+              <strong>{totalCommentCount.toLocaleString("ko-KR")}개</strong>
+              <small>누적 · 최근 7일</small>
+              <CollectionTrendChart
+                points={collectionPoints}
+                totalCount={totalCommentCount}
+              />
             </div>
           </div>
-          <div className="connection-next-step">
+
+          <div className={styles.settingsColumn}>
             {syncProgress.configured ? (
               <ChannelSyncProgressPanel
+                configureAction={configureChannelCommentSyncAction}
+                disconnectAction={disconnectYouTubeChannelAction}
                 initialProgress={syncProgress}
                 key={JSON.stringify(syncProgress)}
+                maxDate={maxDate}
                 requestNowAction={requestChannelCommentSyncNowAction}
                 setEnabledAction={setChannelCommentSyncEnabledAction}
               />
             ) : (
               <ChannelSyncSetup
                 configureAction={configureChannelCommentSyncAction}
-                maxDate={getKoreanToday()}
+                disconnectAction={disconnectYouTubeChannelAction}
+                maxDate={maxDate}
               />
             )}
           </div>
-          <form action={disconnectYouTubeChannelAction} className="disconnect-box">
-            <div>
-              <strong>연결 해제</strong>
-              <p>
-                Google token을 해제하고 로컬 암호화 token을 삭제합니다. 이미
-                수집한 댓글 원문과 분석 기록은 삭제하지 않습니다.
-              </p>
-            </div>
-            <button className="disconnect-button" type="submit">
-              <LinkBreak aria-hidden="true" weight="bold" />
-              YouTube 연결 해제
-            </button>
-          </form>
+        </section>
+      ) : null}
+
+      {connection?.status === "connected" && !selectedChannel ? (
+        <section className={styles.statePanel}>
+          <span className={styles.stateIcon} aria-hidden="true">
+            <YoutubeLogo weight="fill" />
+          </span>
+          <div>
+            <p>채널 확인 필요</p>
+            <h2>연결된 YouTube 채널 정보를 찾지 못했습니다</h2>
+            <span>소유한 채널이 있는 Google 계정으로 다시 연결해 주세요.</span>
+          </div>
+          <Link className={styles.primaryButton} href="/api/youtube/oauth/start">
+            다시 연결하기
+          </Link>
         </section>
       ) : null}
 
       {connection?.status === "error" ? (
-        <section className="youtube-connect-card">
-          <span className="youtube-connect-icon" aria-hidden="true">
+        <section className={styles.statePanel}>
+          <span className={styles.stateIcon} aria-hidden="true">
             <YoutubeLogo weight="fill" />
           </span>
           <div>
             <p>채널을 찾지 못했습니다</p>
             <h2>소유한 YouTube 채널이 있는 Google 계정으로 다시 연결하세요</h2>
           </div>
-          <Link
-            className="button button-primary"
-            href="/api/youtube/oauth/start"
-          >
+          <Link className={styles.primaryButton} href="/api/youtube/oauth/start">
             다시 연결하기
           </Link>
         </section>
       ) : null}
-
     </div>
   );
 }

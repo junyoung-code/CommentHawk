@@ -34,10 +34,14 @@ describe("canAllowChannelExpression", () => {
     ).toBe(false);
   });
 
-  it("stays silent while the comment is still waiting for review", () => {
-    expect(canAllowChannelExpression({ ...caution, reviewLevel: null })).toBe(
-      false,
-    );
+  it("offers an explicit channel-expression choice on a held comment", () => {
+    expect(
+      canAllowChannelExpression({
+        ...caution,
+        reviewLevel: null,
+        classificationStatus: "review_queue",
+      }),
+    ).toBe(true);
   });
 
   it("stays silent once the source is gone from YouTube", () => {

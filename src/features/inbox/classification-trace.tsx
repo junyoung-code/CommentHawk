@@ -19,7 +19,7 @@ const LEVEL_LABELS: Record<string, string> = {
  * 위험이라고 하지 않았으므로 이유 코드가 비고, 화면에는 근거 없이 위험만 남는다.
  * 그 빈자리를 메우는 것이 이 문장이다.
  */
-const BASIS_LABELS: Record<string, string> = {
+export const BASIS_LABELS: Record<string, string> = {
   instant_safe: "1차에서 바로 안전으로 통과",
   non_negotiable_risk_confirmed: "낮출 수 없는 신호를 2차가 확인",
   verifier_uncertain: "2차가 정하지 못해 사람에게 넘김",
@@ -28,6 +28,10 @@ const BASIS_LABELS: Record<string, string> = {
   danger_in_either: "두 판단이 갈려 높은 쪽을 택함",
   verifier_decided_boundary: "안전·주의 경계를 2차가 근거를 대고 정함",
   protective_on_boundary: "경계에서 확신이 없어 보호 쪽으로 둠",
+  ambiguous_sarcasm: "칭찬인지 비꼼인지 판단할 문맥이 부족해 보류",
+  ambiguous_slang: "은어가 감탄인지 공격인지 분명하지 않아 보류",
+  missing_context: "대화 맥락이 부족해 보류",
+  danger_disagreement: "위험 여부에 대한 두 판단이 달라 보류",
 };
 
 const stringArray = (value: unknown) =>

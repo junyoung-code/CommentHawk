@@ -310,6 +310,7 @@ export type Database = {
       channel_comment_sync_runs: {
         Row: {
           analyzed_count: number
+          attempt_count: number
           claim_token: string | null
           created_at: string
           duplicate_count: number
@@ -331,6 +332,7 @@ export type Database = {
         }
         Insert: {
           analyzed_count?: number
+          attempt_count?: number
           claim_token?: string | null
           created_at?: string
           duplicate_count?: number
@@ -352,6 +354,7 @@ export type Database = {
         }
         Update: {
           analyzed_count?: number
+          attempt_count?: number
           claim_token?: string | null
           created_at?: string
           duplicate_count?: number
@@ -407,6 +410,7 @@ export type Database = {
           next_sync_at: string
           reply_reconciliation_page_token: string | null
           reply_reconciliation_status: string
+          retry_blocked: boolean
           sync_interval_minutes: number
           updated_at: string
           workspace_id: string
@@ -430,6 +434,7 @@ export type Database = {
           next_sync_at?: string
           reply_reconciliation_page_token?: string | null
           reply_reconciliation_status?: string
+          retry_blocked?: boolean
           sync_interval_minutes?: number
           updated_at?: string
           workspace_id: string
@@ -453,6 +458,7 @@ export type Database = {
           next_sync_at?: string
           reply_reconciliation_page_token?: string | null
           reply_reconciliation_status?: string
+          retry_blocked?: boolean
           sync_interval_minutes?: number
           updated_at?: string
           workspace_id?: string
@@ -899,11 +905,11 @@ export type Database = {
           level: Database["public"]["Enums"]["review_level"] | null
           raised_by_moderation: boolean
           raised_by_spam: boolean
-          spam_signals: Json
           raw_comment_id: string
           reason_codes: Json
           recommended_actions: Json
           safety_case: boolean
+          spam_signals: Json
           status: string
           workspace_id: string
         }
@@ -920,11 +926,11 @@ export type Database = {
           level?: Database["public"]["Enums"]["review_level"] | null
           raised_by_moderation?: boolean
           raised_by_spam?: boolean
-          spam_signals?: Json
           raw_comment_id: string
           reason_codes?: Json
           recommended_actions?: Json
           safety_case?: boolean
+          spam_signals?: Json
           status: string
           workspace_id: string
         }
@@ -941,11 +947,11 @@ export type Database = {
           level?: Database["public"]["Enums"]["review_level"] | null
           raised_by_moderation?: boolean
           raised_by_spam?: boolean
-          spam_signals?: Json
           raw_comment_id?: string
           reason_codes?: Json
           recommended_actions?: Json
           safety_case?: boolean
+          spam_signals?: Json
           status?: string
           workspace_id?: string
         }
@@ -2515,15 +2521,83 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      claim_channel_comment_sync_cycle: {
+        Args: { target_lease_seconds?: number; target_limit?: number }
+        Returns: {
+          backfill_page_token: string
+          backfill_start_at: string
+          backfill_status: string
+          claim_token: string
+          connection_id: string
+          cycle_budget: number
+          incremental_page_token: string
+          incremental_scan_started_at: string
+          last_successful_sync_at: string
+          page_token: string
+          run_id: string
+          run_kind: string
+          setting_id: string
+          workspace_id: string
+          youtube_channel_id: string
+        }[]
+      }
+      claim_channel_comment_sync_cycle_for_workspace: {
+        Args: {
+          target_lease_seconds?: number
+          target_requesting_user_id: string
+          target_workspace_id: string
+        }
+        Returns: {
+          backfill_page_token: string
+          backfill_start_at: string
+          backfill_status: string
+          claim_token: string
+          connection_id: string
+          cycle_budget: number
+          incremental_page_token: string
+          incremental_scan_started_at: string
+          last_successful_sync_at: string
+          page_token: string
+          run_id: string
+          run_kind: string
+          setting_id: string
+          workspace_id: string
+          youtube_channel_id: string
+        }[]
+      }
+      claim_channel_comment_sync_cycle_internal: {
+        Args: {
+          target_lease_seconds: number
+          target_limit: number
+          target_workspace_id: string
+        }
+        Returns: {
+          backfill_page_token: string
+          backfill_start_at: string
+          backfill_status: string
+          claim_token: string
+          connection_id: string
+          cycle_budget: number
+          incremental_page_token: string
+          incremental_scan_started_at: string
+          last_successful_sync_at: string
+          page_token: string
+          run_id: string
+          run_kind: string
+          setting_id: string
+          workspace_id: string
+          youtube_channel_id: string
+        }[]
+      }
       claim_channel_comment_sync_work: {
         Args: { target_lease_seconds?: number; target_limit?: number }
         Returns: {
           backfill_start_at: string
           claim_token: string
           connection_id: string
-          incremental_scan_started_at: string | null
-          last_successful_sync_at: string | null
-          page_token: string | null
+          incremental_scan_started_at: string
+          last_successful_sync_at: string
+          page_token: string
           run_id: string
           run_kind: string
           setting_id: string
@@ -2541,9 +2615,9 @@ export type Database = {
           backfill_start_at: string
           claim_token: string
           connection_id: string
-          incremental_scan_started_at: string | null
-          last_successful_sync_at: string | null
-          page_token: string | null
+          incremental_scan_started_at: string
+          last_successful_sync_at: string
+          page_token: string
           run_id: string
           run_kind: string
           setting_id: string
@@ -2555,15 +2629,15 @@ export type Database = {
         Args: {
           target_lease_seconds: number
           target_limit: number
-          target_workspace_id: string | null
+          target_workspace_id: string
         }
         Returns: {
           backfill_start_at: string
           claim_token: string
           connection_id: string
-          incremental_scan_started_at: string | null
-          last_successful_sync_at: string | null
-          page_token: string | null
+          incremental_scan_started_at: string
+          last_successful_sync_at: string
+          page_token: string
           run_id: string
           run_kind: string
           setting_id: string
@@ -2590,6 +2664,54 @@ export type Database = {
         }
         Returns: boolean
       }
+      complete_channel_comment_sync_cycle_run: {
+        Args: {
+          target_analyzed_count: number
+          target_backfill_next_page_token?: string | null
+          target_backfill_reached_boundary?: boolean
+          target_claim_token: string
+          target_duplicate_count: number
+          target_failed_count: number
+          target_incremental_next_page_token?: string | null
+          target_incremental_reached_boundary?: boolean
+          target_next_page_token: string | null
+          target_observed_count: number
+          target_quota_units_used: number
+          target_reached_boundary: boolean
+          target_reply_cursor?: string | null
+          target_run_id: string
+          target_stored_count: number
+          target_updated_count: number
+        }
+        Returns: {
+          analyzed_count: number
+          attempt_count: number
+          claim_token: string | null
+          created_at: string
+          duplicate_count: number
+          error_code: string | null
+          failed_count: number
+          finished_at: string | null
+          id: string
+          input_page_token: string | null
+          kind: string
+          observed_count: number
+          output_page_token: string | null
+          quota_units_used: number
+          setting_id: string
+          started_at: string | null
+          status: string
+          stored_count: number
+          updated_count: number
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "channel_comment_sync_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       complete_channel_comment_sync_run: {
         Args: {
           target_analyzed_count: number
@@ -2607,6 +2729,7 @@ export type Database = {
         }
         Returns: {
           analyzed_count: number
+          attempt_count: number
           claim_token: string | null
           created_at: string
           duplicate_count: number
@@ -2683,6 +2806,40 @@ export type Database = {
           next_sync_at: string
           reply_reconciliation_page_token: string | null
           reply_reconciliation_status: string
+          retry_blocked: boolean
+          sync_interval_minutes: number
+          updated_at: string
+          workspace_id: string
+          youtube_channel_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "channel_comment_sync_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      configure_channel_comment_sync_cycle: {
+        Args: { target_start_date: string; target_workspace_id: string }
+        Returns: {
+          backfill_page_token: string | null
+          backfill_start_at: string
+          backfill_status: string
+          connection_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          incremental_page_token: string | null
+          incremental_scan_started_at: string | null
+          last_error_code: string | null
+          last_reply_reconciliation_at: string | null
+          last_successful_sync_at: string | null
+          lease_until: string | null
+          next_reply_reconciliation_at: string | null
+          next_sync_at: string
+          reply_reconciliation_page_token: string | null
+          reply_reconciliation_status: string
+          retry_blocked: boolean
           sync_interval_minutes: number
           updated_at: string
           workspace_id: string
@@ -2752,6 +2909,41 @@ export type Database = {
         Returns: undefined
       }
       ensure_owner_workspace: { Args: never; Returns: string }
+      fail_channel_comment_sync_cycle_run: {
+        Args: {
+          target_claim_token: string
+          target_error_code: string
+          target_run_id: string
+        }
+        Returns: {
+          analyzed_count: number
+          attempt_count: number
+          claim_token: string | null
+          created_at: string
+          duplicate_count: number
+          error_code: string | null
+          failed_count: number
+          finished_at: string | null
+          id: string
+          input_page_token: string | null
+          kind: string
+          observed_count: number
+          output_page_token: string | null
+          quota_units_used: number
+          setting_id: string
+          started_at: string | null
+          status: string
+          stored_count: number
+          updated_count: number
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "channel_comment_sync_runs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       fail_channel_comment_sync_run: {
         Args: {
           target_claim_token: string
@@ -2760,6 +2952,7 @@ export type Database = {
         }
         Returns: {
           analyzed_count: number
+          attempt_count: number
           claim_token: string | null
           created_at: string
           duplicate_count: number
@@ -2790,7 +2983,7 @@ export type Database = {
         Args: {
           target_claim_token: string
           target_duplicate_count: number
-          target_error_code: string | null
+          target_error_code: string
           target_failed_count: number
           target_import_job_id: string
           target_observed_count: number
@@ -2930,8 +3123,66 @@ export type Database = {
           workspace_id: string
         }[]
       }
+      get_youtube_connection_collection_stats: {
+        Args: { target_workspace_id: string }
+        Returns: {
+          bucket_date: string
+          cumulative_count: number
+          total_count: number
+        }[]
+      }
       get_inbox_conversation_page: {
         Args: {
+          action_state_filter?: Database["public"]["Enums"]["action_state"]
+          analysis_state_filter?: string
+          category_filter?: Database["public"]["Enums"]["comment_category"]
+          max_confidence?: number
+          min_confidence?: number
+          page_offset?: number
+          page_size?: number
+          review_levels?: Database["public"]["Enums"]["review_level"][]
+          search_query?: string
+          target_workspace_id: string
+          video_ids?: string[]
+        }
+        Returns: {
+          action_state: Database["public"]["Enums"]["action_state"]
+          ai_review_level: Database["public"]["Enums"]["review_level"]
+          analysis_id: string
+          analysis_state: string
+          author_avatar_url: string
+          author_display_name: string
+          category: Database["public"]["Enums"]["comment_category"]
+          classification_status: string
+          classification_trace: Json
+          confidence: number
+          delete_eligible: boolean
+          like_count: number
+          manual_review: boolean
+          neutral_text: string
+          normalized_question: string
+          published_at: string
+          raw_comment_id: string
+          recommended_action: Database["public"]["Enums"]["recommended_action"]
+          replies: Json
+          reply_count: number
+          review_level: Database["public"]["Enums"]["review_level"]
+          safe_source_text: string
+          source_available: boolean
+          source_import_job_id: string
+          source_kind: Database["public"]["Enums"]["comment_source_kind"]
+          source_moderation_status: string
+          total_count: number
+          video_thumbnail_url: string
+          video_title: string
+          youtube_video_id: string
+        }[]
+      }
+      get_inbox_feed_page: {
+        Args: {
+          classification_status_filter?: string
+          period_filter?: string
+          sort_order?: string
           action_state_filter?: Database["public"]["Enums"]["action_state"]
           analysis_state_filter?: string
           category_filter?: Database["public"]["Enums"]["comment_category"]
@@ -3040,6 +3291,7 @@ export type Database = {
         }
         Returns: {
           analyzed_count: number
+          attempt_count: number
           claim_token: string | null
           created_at: string
           duplicate_count: number
@@ -3120,6 +3372,39 @@ export type Database = {
         }
         Returns: undefined
       }
+      request_channel_comment_sync_cycle_now: {
+        Args: { target_workspace_id: string }
+        Returns: {
+          backfill_page_token: string | null
+          backfill_start_at: string
+          backfill_status: string
+          connection_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          incremental_page_token: string | null
+          incremental_scan_started_at: string | null
+          last_error_code: string | null
+          last_reply_reconciliation_at: string | null
+          last_successful_sync_at: string | null
+          lease_until: string | null
+          next_reply_reconciliation_at: string | null
+          next_sync_at: string
+          reply_reconciliation_page_token: string | null
+          reply_reconciliation_status: string
+          retry_blocked: boolean
+          sync_interval_minutes: number
+          updated_at: string
+          workspace_id: string
+          youtube_channel_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "channel_comment_sync_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       request_channel_comment_sync_now: {
         Args: { target_workspace_id: string }
         Returns: {
@@ -3140,6 +3425,7 @@ export type Database = {
           next_sync_at: string
           reply_reconciliation_page_token: string | null
           reply_reconciliation_status: string
+          retry_blocked: boolean
           sync_interval_minutes: number
           updated_at: string
           workspace_id: string
@@ -3176,6 +3462,7 @@ export type Database = {
           next_sync_at: string
           reply_reconciliation_page_token: string | null
           reply_reconciliation_status: string
+          retry_blocked: boolean
           sync_interval_minutes: number
           updated_at: string
           workspace_id: string
@@ -3426,57 +3713,6 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
-type ExpectTrue<T extends true> = T
-type IsNullable<T> = null extends T ? true : false
-
-export type ChannelCommentSyncDatabaseTypeAssertions = {
-  globalClaimPageToken: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work"]["Returns"][number]["page_token"]
-    >
-  >
-  globalClaimLastSuccessfulSyncAt: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work"]["Returns"][number]["last_successful_sync_at"]
-    >
-  >
-  globalClaimIncrementalScanStartedAt: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work"]["Returns"][number]["incremental_scan_started_at"]
-    >
-  >
-  workspaceClaimPageToken: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work_for_workspace"]["Returns"][number]["page_token"]
-    >
-  >
-  workspaceClaimLastSuccessfulSyncAt: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work_for_workspace"]["Returns"][number]["last_successful_sync_at"]
-    >
-  >
-  workspaceClaimIncrementalScanStartedAt: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work_for_workspace"]["Returns"][number]["incremental_scan_started_at"]
-    >
-  >
-  internalClaimWorkspaceSentinel: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["claim_channel_comment_sync_work_internal"]["Args"]["target_workspace_id"]
-    >
-  >
-  completeNextPageToken: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["complete_channel_comment_sync_run"]["Args"]["target_next_page_token"]
-    >
-  >
-  completeReplyCursor: ExpectTrue<
-    IsNullable<
-      Database["public"]["Functions"]["complete_channel_comment_sync_run"]["Args"]["target_reply_cursor"]
-    >
-  >
-}
 
 export const Constants = {
   graphql_public: {

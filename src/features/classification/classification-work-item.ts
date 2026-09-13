@@ -62,7 +62,7 @@ export const buildClassificationWorkItems = ({
       videoTitle: videoById.get(raw.youtubeVideoId)?.title ?? "",
       channelId,
       policyVersion,
-      profile: profile ?? DEFAULT_CLASSIFICATION_PROFILE,
+      profile: raw.sourceKind === "owned_oauth" ? profile ?? DEFAULT_CLASSIFICATION_PROFILE : DEFAULT_CLASSIFICATION_PROFILE,
       sourceKind: raw.sourceKind,
       // 실제 사례는 분류 직전에 붙인다. 여기서는 순수하게 항목만 만든다.
       similarExamples: [],

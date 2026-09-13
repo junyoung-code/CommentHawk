@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { getInboxPage, type InboxRepository } from "./inbox-query";
 
 describe("Comment Inbox query", () => {
-  it("defaults to caution and risk", async () => {
+  it("defaults to all review levels", async () => {
     const repository: InboxRepository = {
       query: vi.fn().mockResolvedValue({ items: [], total: 0 }),
     };
@@ -19,10 +19,11 @@ describe("Comment Inbox query", () => {
     expect(repository.query).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: "workspace-1",
-        reviewLevels: ["caution", "risk"],
+        reviewLevels: ["safe", "caution", "risk"],
+        classificationStatus: null,
       }),
     );
-    expect(result.filters.reviewLevels).toEqual(["caution", "risk"]);
+    expect(result.filters.reviewLevels).toEqual(["safe", "caution", "risk"]);
   });
 
   it("accepts only known URL filter values", async () => {
@@ -50,6 +51,7 @@ describe("Comment Inbox query", () => {
     expect(repository.query).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
       reviewLevels: ["safe"],
+      classificationStatus: null,
       category: "question",
       videoIds: [],
       analysisState: "failed",
@@ -57,9 +59,37 @@ describe("Comment Inbox query", () => {
       minConfidence: 0,
       maxConfidence: 0.72,
       search: "자막",
+      period: "all",
+      sort: "latest",
       limit: 25,
       offset: 25,
     });
+  });
+
+  it("validates date presets and sorting", async () => {
+    const repository: InboxRepository = { query: vi.fn().mockResolvedValue({ items: [], total: 0 }) };
+    const result = await getInboxPage({ workspaceId: "workspace-1", searchParams: { period: "30d", sort: "likes" } }, repository);
+    expect(result.filters).toMatchObject({ period: "30d", sort: "likes" });
+    const invalid = await getInboxPage({ workspaceId: "workspace-1", searchParams: { period: "arbitrary SQL", sort: "unknown" } }, repository);
+    expect(invalid.filters).toMatchObject({ period: "all", sort: "latest" });
+  });
+
+  it("accepts the review queue as a separate status filter", async () => {
+    const repository: InboxRepository = {
+      query: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    };
+
+    await getInboxPage(
+      {
+        workspaceId: "workspace-1",
+        searchParams: { status: "review_queue" },
+      },
+      repository,
+    );
+
+    expect(repository.query).toHaveBeenCalledWith(
+      expect.objectContaining({ classificationStatus: "review_queue" }),
+    );
   });
 
   it("does not turn empty confidence fields into zero filters", async () => {

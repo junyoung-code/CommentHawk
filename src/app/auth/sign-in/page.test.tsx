@@ -21,13 +21,9 @@ describe("SignInPage", () => {
     expect(
       screen.getByRole("button", { name: "Google로 계속하기" }),
     ).toBeInTheDocument();
-    const alternative = screen.getByText("다른 방법으로 로그인");
-    expect(alternative.closest("details")).toContainElement(
-      screen.getByLabelText("이메일"),
-    );
-    expect(
-      screen.getByRole("button", { name: "로그인 링크 받기" }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("다른 방법으로 로그인")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("이메일")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "로그인 링크 받기" })).not.toBeInTheDocument();
     expect(
       screen.getByText(/YouTube 채널 권한은 로그인 후 별도로 연결/),
     ).toBeInTheDocument();

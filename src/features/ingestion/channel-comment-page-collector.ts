@@ -26,6 +26,43 @@ export type ChannelCommentCollectionKind =
   | "backfill_recent"
   | "incremental";
 
+const CURSOR_PREFIX = "crowdsift:v1:";
+
+type PageCursor = {
+  providerPageToken: string | null;
+  offset: number;
+};
+
+const decodePageCursor = (value: string | null): PageCursor => {
+  if (!value?.startsWith(CURSOR_PREFIX)) {
+    return { providerPageToken: value, offset: 0 };
+  }
+
+  try {
+    const parsed = JSON.parse(
+      decodeURIComponent(value.slice(CURSOR_PREFIX.length)),
+    ) as Partial<PageCursor>;
+    if (
+      (parsed.providerPageToken === null ||
+        typeof parsed.providerPageToken === "string") &&
+      Number.isInteger(parsed.offset) &&
+      (parsed.offset ?? -1) >= 0
+    ) {
+      return {
+        providerPageToken: parsed.providerPageToken,
+        offset: parsed.offset,
+      } as PageCursor;
+    }
+  } catch {
+    // Treat malformed CrowdSift cursors as provider cursors for compatibility.
+  }
+
+  return { providerPageToken: value, offset: 0 };
+};
+
+const encodePageCursor = (cursor: PageCursor) =>
+  `${CURSOR_PREFIX}${encodeURIComponent(JSON.stringify(cursor))}`;
+
 const RFC3339_TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|([+-])(\d{2}):(\d{2}))$/;
 
@@ -164,6 +201,7 @@ async function collectReplies({
 export async function collectChannelCommentPage({
   boundaryAt,
   kind,
+  maxComments = 100,
   pageToken,
   provider,
   tokens,
@@ -174,25 +212,28 @@ export async function collectChannelCommentPage({
   pageToken: string | null;
   boundaryAt: string;
   kind: ChannelCommentCollectionKind;
+  maxComments?: number;
   /** 있으면 소유자로 읽어 보류된 댓글까지 가져온다. */
   tokens?: OwnerReadTokens;
 }): Promise<ChannelCommentCollectionPage> {
+  if (!Number.isInteger(maxComments) || maxComments < 1 || maxComments > 100) {
+    throw new RangeError("channel_comment_limit_out_of_range");
+  }
   const boundaryValue = parseRfc3339Timestamp(boundaryAt);
   if (boundaryValue === null) {
     throw new TypeError("invalid_channel_comment_boundary");
   }
 
+  const cursor = decodePageCursor(pageToken);
   const page = await provider.listChannelCommentThreads({
     youtubeChannelId,
     maxResults: 100,
-    pageToken: pageToken ?? undefined,
+    pageToken: cursor.providerPageToken ?? undefined,
     tokens,
   });
   const comments: SourceComment[] = [];
   const groups = new Map<string, SourceComment[]>();
   const selectedCommentIds = new Set<string>();
-  let topLevelCount = 0;
-  let replyCount = 0;
   let quotaUnitsUsed = page.quotaUnitsUsed;
   let reachedBoundary = false;
   const includedThreads: Array<{
@@ -281,7 +322,6 @@ export async function collectChannelCommentPage({
     group.push(mappedParent);
     groups.set(thread.youtubeVideoId, group);
     comments.push(mappedParent);
-    topLevelCount += 1;
 
     const collectedReplies = await collectReplies({
       inlineReplies: [...thread.inlineReplies.values()],
@@ -309,19 +349,48 @@ export async function collectChannelCommentPage({
       const mappedReply = mapProviderComment(reply);
       group.push(mappedReply);
       comments.push(mappedReply);
-      replyCount += 1;
     }
   }
 
+  const selectedComments = comments.slice(
+    cursor.offset,
+    cursor.offset + maxComments,
+  );
+  const selectedGroups = new Map<string, SourceComment[]>();
+  const selectedIds = new Set(
+    selectedComments.map((item) => item.youtubeCommentId),
+  );
+  for (const [youtubeVideoId, videoComments] of groups) {
+    const selected = videoComments.filter((item) =>
+      selectedIds.has(item.youtubeCommentId),
+    );
+    if (selected.length > 0) selectedGroups.set(youtubeVideoId, selected);
+  }
+
+  const consumedOffset = cursor.offset + selectedComments.length;
+  const hasMoreOnCurrentPage = consumedOffset < comments.length;
+  const nextPageToken = hasMoreOnCurrentPage
+    ? encodePageCursor({
+        providerPageToken: cursor.providerPageToken,
+        offset: consumedOffset,
+      })
+    : reachedBoundary
+      ? null
+      : (page.nextPageToken ?? null);
+  const selectedTopLevelCount = selectedComments.filter(
+    (item) => item.parentYoutubeCommentId === null,
+  ).length;
+  const selectedInvalidCount = cursor.offset === 0 ? page.invalidItemCount : 0;
+
   return {
-    comments,
-    groups,
-    observedCount: comments.length + page.invalidItemCount,
-    topLevelCount,
-    replyCount,
-    invalidCount: page.invalidItemCount,
-    nextPageToken: reachedBoundary ? null : page.nextPageToken,
-    reachedBoundary,
+    comments: selectedComments,
+    groups: selectedGroups,
+    observedCount: selectedComments.length + selectedInvalidCount,
+    topLevelCount: selectedTopLevelCount,
+    replyCount: selectedComments.length - selectedTopLevelCount,
+    invalidCount: selectedInvalidCount,
+    nextPageToken,
+    reachedBoundary: reachedBoundary && !hasMoreOnCurrentPage,
     quotaUnitsUsed,
   };
 }

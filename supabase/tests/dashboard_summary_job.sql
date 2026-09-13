@@ -2,6 +2,10 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
+-- The scanner is global. Keep existing local development jobs out of this
+-- transaction's candidate set; the final rollback restores their counts.
+update public.analysis_jobs set completed_count = 0 where completed_count >= 10;
+
 insert into auth.users (
   id,
   aud,

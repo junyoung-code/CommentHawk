@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import { loadEnvConfig } from "@next/env";
+
+import { E2E_DEVELOPER_USER_ID } from "./e2e/fixtures/providers";
+
+loadEnvConfig(process.cwd());
 
 export default defineConfig({
   testDir: "./e2e",
@@ -31,7 +36,7 @@ export default defineConfig({
   ],
   webServer: {
     command:
-      "ALLOW_FIXTURE_PROVIDERS=true ENABLE_PUBLIC_YOUTUBE_DEV_MODE=true EXTERNAL_PROVIDER_MODE=fixture npm run dev",
+      `ALLOW_FIXTURE_PROVIDERS=true ENABLE_DEVELOPER_TOOLS=true ENABLE_PUBLIC_YOUTUBE_DEV_MODE=true EXTERNAL_PROVIDER_MODE=fixture DEVELOPER_USER_IDS=${E2E_DEVELOPER_USER_ID} npm run dev`,
     url: "http://localhost:3000",
     reuseExistingServer: true,
     timeout: 120_000,

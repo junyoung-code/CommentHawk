@@ -5,18 +5,18 @@ import {
   ChatCircleDots,
   CheckCircle,
   Circle,
-  Funnel,
-  Heart,
-  LockKey,
-  MagnifyingGlass,
-  PaperPlaneRight,
+  ThumbsUp,
+  DotsThreeVertical,
+  Info,
+  User,
   ShieldWarning,
-  SlidersHorizontal,
-  Sparkle,
   WarningCircle,
 } from "@phosphor-icons/react/dist/ssr";
 import Image from "next/image";
 import Link from "next/link";
+
+import { InboxFilters } from "./inbox-filters";
+import styles from "./inbox-feed.module.css";
 
 import type {
   CommentCategory,
@@ -27,16 +27,14 @@ import type {
 import type { ModerationAction } from "@/features/moderation/contracts";
 
 import { canAllowChannelExpression } from "./allow-expression-eligibility";
-import { CommentSourceBlock } from "./comment-source-block";
 import type {
   InboxActionState,
   InboxAnalysisState,
   InboxItem,
-  InboxReply,
   SourceModerationStatus,
 } from "./inbox-query";
 import { SourceReveal } from "./source-reveal";
-import { ClassificationTrace } from "./classification-trace";
+import { BASIS_LABELS, ClassificationTrace } from "./classification-trace";
 
 const LEVEL_DETAILS: Record<
   ReviewLevel,
@@ -84,8 +82,9 @@ const ACTION_STATE_LABELS: Record<InboxActionState, string> = {
   cancelled: "조치 취소",
 };
 
-type ActiveFilters = {
+export type ActiveFilters = {
   reviewLevels: ReviewLevel[];
+  classificationStatus?: InboxItem["classificationStatus"];
   category?: CommentCategory | null;
   videoIds?: string[];
   analysisState?: InboxAnalysisState | null;
@@ -95,6 +94,8 @@ type ActiveFilters = {
   search?: string | null;
   limit?: number;
   offset?: number;
+  period?: "all" | "7d" | "30d" | "90d";
+  sort?: "latest" | "likes";
 };
 
 const getPrimarySummary = (item: InboxItem) => {
@@ -108,12 +109,6 @@ const getPrimarySummary = (item: InboxItem) => {
   }
   return "원문에서 보존할 만한 유용한 신호를 찾지 못했습니다.";
 };
-
-const getReplySummary = (reply: InboxReply) =>
-  reply.safeSourceText ??
-  reply.neutralText ??
-  reply.normalizedQuestion ??
-  "안전 검토 전까지 답글 원문을 표시하지 않습니다.";
 
 const isInitiallyVisibleSource = (level: ReviewLevel | null) =>
   level === "safe";
@@ -172,20 +167,11 @@ const INSIGHT_DESCRIPTIONS: Record<CommentCategory, string> = {
   uncertain: "판단 근거가 충분하지 않아 운영자의 직접 검토가 필요합니다.",
 };
 
-const getQueueContextLabel = (item: InboxItem) => {
-  if (item.reviewLevel === "risk") return "위험 댓글 · 내용 보호됨";
-  if (
-    item.category === "constructive_feedback" ||
-    item.category === "toxic_but_actionable"
-  ) {
-    return "시프티가 찾은 긍정적 피드백";
-  }
-  if (item.reviewLevel === "caution") return "주의 댓글 · 원문 보호됨";
-  return item.category ? CATEGORY_LABELS[item.category] : "시프티 분석 대기";
-};
-
 const getInsightDescription = (item: InboxItem) =>
-  item.category
+  item.classificationStatus === "review_queue"
+    ? BASIS_LABELS[item.classificationTrace?.final?.basis ?? ""] ??
+      "판단 근거가 충분하지 않아 직접 확인이 필요합니다."
+    : item.category
     ? INSIGHT_DESCRIPTIONS[item.category]
     : "분석이 완료되면 댓글 유형과 운영상 의미를 표시합니다.";
 
@@ -206,30 +192,15 @@ const getCertainty = (item: InboxItem) => {
   return certainty ? `${labels[certainty] ?? "확인 필요"} · ${certainty}` : "분석 전";
 };
 
-/**
- * 접힌 토글에 무엇이 골라져 있는지 적는다.
- *
- * 열어 보지 않고도 알 수 있어야 한다. 하나면 제목을, 여럿이면 개수를 보여 준다.
- */
-const describeVideoSelection = (
-  videoIds: string[] | undefined,
-  videos: { id: string; title: string | null }[],
-) => {
-  const selected = videoIds ?? [];
-  if (selected.length === 0) return "전체 영상";
-  if (selected.length === 1) {
-    const only = videos.find((video) => video.id === selected[0]);
-    return only?.title ?? "영상 1개";
-  }
-  return `${selected.length}개 선택`;
-};
-
 const buildParameters = (
   filters: ActiveFilters,
   additions: Record<string, string | null>,
 ) => {
   const parameters = new URLSearchParams();
   filters.reviewLevels.forEach((level) => parameters.append("levels", level));
+  if (filters.classificationStatus) {
+    parameters.set("status", filters.classificationStatus);
+  }
   if (filters.category) parameters.set("category", filters.category);
   filters.videoIds?.forEach((videoId) => parameters.append("video", videoId));
   if (filters.analysisState) parameters.set("analysis", filters.analysisState);
@@ -241,6 +212,9 @@ const buildParameters = (
     parameters.set("maxConfidence", String(filters.maxConfidence));
   }
   if (filters.search) parameters.set("search", filters.search);
+  if (!filters.reviewLevels.length) parameters.set("levels", "");
+  if (filters.period) parameters.set("period", filters.period);
+  if (filters.sort) parameters.set("sort", filters.sort);
   Object.entries(additions).forEach(([key, value]) => {
     if (value === null) parameters.delete(key);
     else parameters.set(key, value);
@@ -261,18 +235,18 @@ function Avatar({
     return (
       <Image
         alt={`${name ?? "이름 없는 시청자"} 프로필`}
-        className="inbox-avatar inbox-avatar-image"
-        height={35}
+        className={styles.avatar}
+        height={48}
         src={imageUrl}
         unoptimized
-        width={35}
+        width={48}
       />
     );
   }
 
   return (
-    <span className={`inbox-avatar inbox-avatar-${tone}`} aria-hidden="true">
-      {getInitial(name)}
+    <span className={`${styles.avatar} ${styles.avatarFallback}`} data-tone={tone} aria-hidden="true">
+      {name ? getInitial(name) : <User weight="fill" />}
     </span>
   );
 }
@@ -280,11 +254,11 @@ function Avatar({
 function ShiftyAvatar() {
   return (
     <Image
-      alt="시프티 프로필"
-      className="inbox-shifty-avatar"
-      height={18}
+      alt="시프티가 표현을 정리했어요"
+      className={styles.shifty}
+      height={28}
       src="/brand/shifty-owl-profile.png"
-      width={18}
+      width={28}
     />
   );
 }
@@ -345,7 +319,13 @@ function CorrectionForm({
   item: InboxItem;
 }) {
   const isPublicSource = item.sourceKind === "public_url";
-  if (!item.analysisId || !item.category || !item.reviewLevel) return null;
+  if (
+    !item.analysisId ||
+    !item.category ||
+    (!item.reviewLevel && item.classificationStatus !== "review_queue")
+  ) {
+    return null;
+  }
 
   return (
     <details className="feedback-correction">
@@ -378,9 +358,15 @@ function CorrectionForm({
         <label>
           <span>검토 등급</span>
           <select
-            defaultValue={item.reviewLevel}
+            defaultValue={item.reviewLevel ?? ""}
             name="correctedReviewLevel"
+            required
           >
+            {item.reviewLevel ? null : (
+              <option disabled value="">
+                등급을 선택해 주세요
+              </option>
+            )}
             {(Object.keys(LEVEL_DETAILS) as ReviewLevel[]).map((level) => (
               <option key={level} value={level}>
                 {LEVEL_DETAILS[level].label}
@@ -421,19 +407,16 @@ function CorrectionForm({
           <>
             <label className="feedback-consent">
               <input
+                defaultChecked
                 name="useForPersonalization"
                 type="checkbox"
                 value="true"
               />
               <span>
                 <strong>내 기준 개인화에 사용</strong>
-                {/*
-                  동의를 미리 받아 두는 칸이다. 읽는 코드가 아직 없으므로 「활용
-                  합니다」라고 쓰면 하지 않는 일을 한다고 말하는 것이 된다.
-                */}
                 <small>
-                  동의만 저장하며 지금은 판단에 쓰지 않습니다. 판단에 바로
-                  반영되는 것은 원문에서 표현을 등록할 때뿐입니다.
+                  비슷한 새 댓글을 분류할 때 이 판단을 참고합니다. 원하지
+                  않으면 선택을 해제할 수 있습니다.
                 </small>
               </span>
             </label>
@@ -568,542 +551,116 @@ export function CommentInbox({
   moderationAction: (formData: FormData) => void | Promise<void>;
   allowExpressionAction: (formData: FormData) => void | Promise<void>;
 }) {
-  const selectedItem =
-    data.items.find((item) => item.rawCommentId === selectedCommentId) ??
-    data.items[0] ??
-    null;
   const limit = filters.limit ?? 25;
   const offset = filters.offset ?? 0;
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(Math.ceil(data.total / limit), 1);
-  const selectedIsPublic = selectedItem?.sourceKind === "public_url";
 
   return (
-    <div className="comment-inbox">
-      <section className="inbox-toolbar" aria-label="댓글 필터">
-        <div className="inbox-toolbar-heading">
-          <span aria-hidden="true">
-            <SlidersHorizontal weight="duotone" />
-          </span>
-          <div>
-            <p>COMMENT OPERATIONS</p>
-            <h2>댓글 운영 워크스페이스</h2>
-          </div>
-        </div>
-
-        <form action="/app/inbox" className="inbox-filter-form" method="get">
-          <label className="inbox-search-field">
-            <span className="sr-only">댓글 검색</span>
-            <span>
-              <MagnifyingGlass aria-hidden="true" />
-              <input
-                defaultValue={filters.search ?? ""}
-                name="search"
-                placeholder="댓글, 작성자, 정제된 피드백 검색"
-                type="search"
-              />
-            </span>
-          </label>
-
-          <fieldset className="inbox-level-filters">
-            <legend className="sr-only">검토 등급</legend>
-            {(Object.keys(LEVEL_DETAILS) as ReviewLevel[]).map((level) => {
-              const details = LEVEL_DETAILS[level];
-              const Icon = details.icon;
-              return (
-                <label key={level}>
-                  <input
-                    defaultChecked={filters.reviewLevels.includes(level)}
-                    name="levels"
-                    type="checkbox"
-                    value={level}
-                  />
-                  <Icon aria-hidden="true" weight="fill" />
-                  {details.filterLabel}
-                </label>
-              );
-            })}
-          </fieldset>
-
-          <details className="inbox-advanced-filters">
-            <summary>
-              상세 필터
-              <CaretDown aria-hidden="true" weight="bold" />
-            </summary>
-            <div className="inbox-select-filters">
-              <label>
-                <span>댓글 유형</span>
-                <select defaultValue={filters.category ?? ""} name="category">
-                  <option value="">전체 유형</option>
-                  {(Object.keys(CATEGORY_LABELS) as CommentCategory[]).map(
-                    (category) => (
-                      <option key={category} value={category}>
-                        {CATEGORY_LABELS[category]}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </label>
-              <div className="inbox-video-filter">
-                <span>영상</span>
-                {/*
-                  「전체 영상」 항목을 따로 두지 않는다. 그것과 개별 선택이 어긋났을 때
-                  무엇이 맞는지 사람이 알 수 없다. 하나도 고르지 않으면 전체를 본다.
-                */}
-                <details>
-                  <summary>
-                    <span>{describeVideoSelection(filters.videoIds, videos)}</span>
-                    <CaretDown aria-hidden="true" weight="bold" />
-                  </summary>
-                  <div>
-                    {videos.map((video) => (
-                      <label key={video.id}>
-                        <input
-                          defaultChecked={filters.videoIds?.includes(video.id)}
-                          name="video"
-                          type="checkbox"
-                          value={video.id}
-                        />
-                        <span>{video.title}</span>
-                      </label>
-                    ))}
-                  </div>
-                </details>
-              </div>
-              <label>
-                <span>분석 상태</span>
-                <select
-                  defaultValue={filters.analysisState ?? ""}
-                  name="analysis"
-                >
-                  <option value="">전체 분석 상태</option>
-                  {(
-                    Object.keys(
-                      ANALYSIS_STATE_LABELS,
-                    ) as InboxAnalysisState[]
-                  ).map((state) => (
-                    <option key={state} value={state}>
-                      {ANALYSIS_STATE_LABELS[state]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>조치 상태</span>
-                <select defaultValue={filters.actionState ?? ""} name="action">
-                  <option value="">전체 조치 상태</option>
-                  {(
-                    Object.keys(ACTION_STATE_LABELS) as InboxActionState[]
-                  ).map((state) => (
-                    <option key={state} value={state}>
-                      {ACTION_STATE_LABELS[state]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </details>
-
-          <button className="button button-primary" type="submit">
-            <Funnel aria-hidden="true" weight="fill" />
-            적용
-          </button>
-        </form>
-      </section>
-
+    <div className={styles.feed}>
+      <InboxFilters
+        key={JSON.stringify(filters)}
+        filters={filters}
+        videos={videos}
+        categories={Object.entries(CATEGORY_LABELS)}
+        analysisStates={Object.entries(ANALYSIS_STATE_LABELS)}
+        actionStates={Object.entries(ACTION_STATE_LABELS)}
+      />
       {data.items.length === 0 ? (
-        <section className="inbox-results" aria-labelledby="inbox-results-title">
-          <div className="inbox-empty-state">
-            <Circle aria-hidden="true" weight="duotone" />
-            <h3 id="inbox-results-title">현재 조건에 맞는 댓글이 없습니다</h3>
-            <p>
-              다른 등급이나 분석 상태를 선택하거나, 새 댓글을 가져온 뒤 다시
-              확인해 주세요.
-            </p>
-          </div>
+        <section className={styles.empty} aria-labelledby="inbox-results-title">
+          <Circle aria-hidden="true" weight="duotone" />
+          <h2 id="inbox-results-title">현재 조건에 맞는 댓글이 없습니다</h2>
+          <p>필터를 초기화하거나 다른 영상과 기간을 선택해 주세요.</p>
+          <Link href="/app/inbox?levels=safe,caution,risk">필터 초기화</Link>
         </section>
       ) : (
-        <div className="inbox-workspace">
-          <aside className="inbox-queue" aria-label={`댓글 ${data.total}개`}>
-            <header>
-              <div>
-                <p>INBOX</p>
-                <h2>댓글 {data.total}개</h2>
-              </div>
-              <span>최신순</span>
-            </header>
-
-            <div className="inbox-comment-list">
-              {data.items.map((item, index) => {
-                const isSelected =
-                  selectedItem?.rawCommentId === item.rawCommentId;
-                const itemHref = buildParameters(filters, {
-                  selected: item.rawCommentId,
-                  page: String(currentPage),
-                });
-                return (
-                  <article
-                    className={`inbox-queue-item ${
-                      isSelected ? "is-selected" : ""
-                    }`}
-                    key={`${item.rawCommentId}:${item.sourceImportJobId}`}
-                  >
-                    <Link
-                      className="inbox-queue-select"
-                      href={itemHref}
-                      aria-current={isSelected ? "true" : undefined}
-                    >
-                      <Avatar
-                        imageUrl={item.authorAvatarUrl}
-                        name={item.authorDisplayName}
-                        tone={
-                          (["blue", "violet", "coral", "mint"] as const)[
-                            index % 4
-                          ]
-                        }
-                      />
-                      <span>
-                        <strong>
-                          {item.authorDisplayName ?? "이름 없는 시청자"}
-                        </strong>
-                        <small>{getRelativeDate(item.publishedAt)}</small>
-                      </span>
-                    </Link>
-                    <span
-                      className={`inbox-queue-context inbox-queue-context-${item.reviewLevel ?? "pending"}`}
-                    >
-                      {item.reviewLevel === "risk" ||
-                      item.category === "constructive_feedback" ||
-                      item.category === "toxic_but_actionable" ||
-                      item.category === "uncertain" ? (
-                        <ShiftyAvatar />
-                      ) : null}
-                      {getQueueContextLabel(item)}
-                    </span>
-                    <p className="inbox-sanitized-feedback">
-                      {getQueuePreview(item)}
-                    </p>
-                    <div className="inbox-queue-video">
-                      {item.videoThumbnailUrl ? (
-                        <Image
-                          alt={`${item.videoTitle ?? "선택한 영상"} 썸네일`}
-                          height={36}
-                          src={item.videoThumbnailUrl}
-                          unoptimized
-                          width={58}
+        <section className={styles.list} aria-label={`댓글 ${data.total}개`}>
+          <h2 className="sr-only">댓글 {data.total}개</h2>
+          {data.items.map((item) => {
+            const refined = !(item.reviewLevel === "safe" && item.safeSourceText);
+            const title = item.videoTitle ?? videos.find((video) => video.id === item.youtubeVideoId)?.title ?? item.youtubeVideoId;
+            return (
+              <article className={styles.comment} key={`${item.rawCommentId}:${item.sourceImportJobId}`} id={`comment-${item.rawCommentId}`}>
+                <div className={styles.commentAvatar}>
+                  <Avatar imageUrl={item.authorAvatarUrl} name={item.authorDisplayName} />
+                </div>
+                <div className={styles.commentContent}>
+                  <header className={styles.author}>
+                    <strong>{item.authorDisplayName ?? "이름 없는 시청자"}</strong>
+                    <span>· {getRelativeDate(item.publishedAt)}</span>
+                    {refined && item.analysisState === "analyzed" ? <ShiftyAvatar /> : null}
+                  </header>
+                  <p className={`${styles.body} ${refined ? styles.refined : ""}`}>{getQueuePreview(item)}</p>
+                  {refined ? (
+                    <div className={styles.sourceRow}>
+                      {item.sourceAvailable ? (
+                        <SourceReveal
+                          commentId={item.rawCommentId}
+                          label="원문 보기"
+                          compact
+                          allowExpressionAction={canAllowChannelExpression(item) ? allowExpressionAction : undefined}
                         />
-                      ) : null}
-                      <span>
-                        {item.videoTitle ??
-                          videos.find(
-                            (video) => video.id === item.youtubeVideoId,
-                          )?.title ??
-                          item.youtubeVideoId}
+                      ) : <span>원문을 더 이상 불러올 수 없습니다.</span>}
+                      <span className={`${styles.warning} ${item.reviewLevel === "risk" ? styles.risk : ""}`}>
+                        {item.reviewLevel === "risk" ? <ShieldWarning aria-hidden="true" /> : <Info aria-hidden="true" />}
+                        {item.reviewLevel === "risk" ? "위험 댓글 · 내용 보호됨" : item.reviewLevel === "caution" ? "거친 표현 포함" : item.classificationStatus === "review_queue" ? "판단 보류 · 내용 보호됨" : item.analysisState === "analyzed" ? "원문 보호됨" : "분석 전 · 내용 보호됨"}
                       </span>
                     </div>
-                    <div className="inbox-queue-item-meta">
-                      <div>
-                        <span>
-                          <Heart aria-hidden="true" />
-                          좋아요 {item.likeCount}
-                        </span>
-                        {item.replyCount > 0 ? (
-                          <span>
-                            <ChatCircleDots aria-hidden="true" />
-                            답글 {item.replyCount}개
-                          </span>
-                        ) : null}
+                  ) : null}
+                  <SupersededRiskNotice item={item} />
+                  <div className={`${styles.reactions} ${item.replyCount > 0 ? styles.hasReplies : ""}`}>
+                    <span aria-label={`좋아요 ${item.likeCount}`}><ThumbsUp aria-hidden="true" />{item.likeCount}</span>
+                    {item.replyCount === 0 ? <span className={styles.noReplies}><ChatCircleDots aria-hidden="true" />답글 0개</span> : null}
+                    {item.sourceKind === "public_url" ? <span className={styles.readonly}>공개 URL · 읽기 전용</span> : null}
+                  </div>
+                  {item.replyCount > 0 ? (
+                    <details className={styles.replies} open={selectedCommentId === item.rawCommentId || undefined}>
+                      <summary><ChatCircleDots aria-hidden="true" />답글 보기 ({item.replyCount})<CaretDown aria-hidden="true" /></summary>
+                      <div className={styles.replyList}>
+                        {item.replies.map((reply) => {
+                          const safe = reply.reviewLevel === "safe" && reply.sourceAvailable && reply.safeSourceText;
+                          return (
+                            <article key={reply.rawCommentId} className={styles.reply}>
+                              <Avatar imageUrl={reply.authorAvatarUrl} name={reply.authorDisplayName} />
+                              <div>
+                                <header className={styles.author}><strong>{reply.authorDisplayName ?? "이름 없는 시청자"}</strong><span>· {getRelativeDate(reply.publishedAt)}</span></header>
+                                <p>{safe ? reply.safeSourceText : reply.neutralText ?? reply.normalizedQuestion ?? "안전 검토 전까지 답글 원문을 표시하지 않습니다."}</p>
+                                {!safe && reply.sourceAvailable ? <SourceReveal commentId={reply.rawCommentId} label="답글 원문 보기" compact /> : null}
+                                <span className={styles.replyLikes}><ThumbsUp aria-hidden="true" />{reply.likeCount}</span>
+                              </div>
+                            </article>
+                          );
+                        })}
+                        {item.replies.length === 0 ? <p>아직 저장된 대댓글이 없습니다.</p> : null}
                       </div>
-                    </div>
-                    {item.replyCount > 0 ? (
-                      <Link className="inbox-reply-disclosure" href={itemHref}>
-                        <ChatCircleDots aria-hidden="true" weight="fill" />
-                        답글 {item.replyCount}개 보기
-                      </Link>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          </aside>
-
-          {selectedItem ? (
-            <>
-              <section
-                className="inbox-conversation"
-                aria-labelledby="conversation-title"
-              >
-                <header>
-                  <div>
-                    <p>CONVERSATION</p>
-                    <h2 id="conversation-title">댓글 대화</h2>
-                  </div>
-                  <div className="inbox-conversation-video">
-                    {selectedItem.videoThumbnailUrl ? (
-                      <Image
-                        alt={`${
-                          selectedItem.videoTitle ?? "선택한 영상"
-                        } 썸네일`}
-                        height={32}
-                        src={selectedItem.videoThumbnailUrl}
-                        unoptimized
-                        width={52}
-                      />
-                    ) : null}
-                    <span>
-                      {selectedItem.videoTitle ??
-                        videos.find(
-                          (video) => video.id === selectedItem.youtubeVideoId,
-                        )?.title ??
-                        selectedItem.youtubeVideoId}
-                    </span>
-                  </div>
-                </header>
-
-                <div className="inbox-thread">
-                  <article className="inbox-thread-comment">
-                    <div className="inbox-thread-author">
-                      <Avatar
-                        imageUrl={selectedItem.authorAvatarUrl}
-                        name={selectedItem.authorDisplayName}
-                        tone="blue"
-                      />
-                      <div>
-                        <strong>
-                          {selectedItem.authorDisplayName ??
-                            "이름 없는 시청자"}
-                        </strong>
-                        <span>{getRelativeDate(selectedItem.publishedAt)}</span>
-                      </div>
-                      <ReviewBadge
-                        classificationStatus={selectedItem.classificationStatus}
-                        level={selectedItem.reviewLevel}
-                      />
-                    </div>
-
-                    {isInitiallyVisibleSource(selectedItem.reviewLevel) &&
-                    selectedItem.sourceAvailable &&
-                    selectedItem.safeSourceText ? (
-                      <CommentSourceBlock
-                        authorAvatarUrl={selectedItem.authorAvatarUrl}
-                        authorDisplayName={selectedItem.authorDisplayName}
-                        publishedAt={selectedItem.publishedAt}
-                        textDisplay={selectedItem.safeSourceText}
-                      />
-                    ) : (
-                      <div
-                        className={`inbox-protected-source inbox-protected-source-${selectedItem.reviewLevel ?? "pending"}`}
-                      >
-                        <span>
-                          <ShiftyAvatar />
-                          {selectedItem.reviewLevel === "risk"
-                            ? "시프티 분석 결과"
-                            : getQueueContextLabel(selectedItem)}
-                        </span>
-                        <p>{getPrimarySummary(selectedItem)}</p>
-                        {selectedItem.sourceAvailable ? (
-                          <div className="inbox-source-warning-row">
-                            <span>
-                              <ShieldWarning aria-hidden="true" />
-                              {selectedItem.reviewLevel === "risk"
-                                ? "원문에는 유해한 표현이 포함될 수 있습니다."
-                                : "원문에는 거친 표현이 포함될 수 있습니다."}
-                            </span>
-                            <SourceReveal
-                              allowExpressionAction={
-                                canAllowChannelExpression(selectedItem)
-                                  ? allowExpressionAction
-                                  : undefined
-                              }
-                              commentId={selectedItem.rawCommentId}
-                              key={selectedItem.rawCommentId}
-                            />
-                          </div>
-                        ) : (
-                          <p className="source-unavailable">
-                            YouTube에서 더 이상 원문을 확인할 수 없습니다.
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="inbox-thread-reactions">
-                      <span>
-                        <Heart aria-hidden="true" />
-                        좋아요 {selectedItem.likeCount}
-                      </span>
-                      <span>
-                        <ChatCircleDots aria-hidden="true" />
-                        답글 {selectedItem.replyCount}
-                      </span>
-                    </div>
-                  </article>
-
-                  {selectedItem.replies.length > 0 ? (
-                    <div
-                      className="inbox-thread-replies"
-                      aria-label={`대댓글 ${selectedItem.replyCount}개`}
-                    >
-                      {selectedItem.replies.map((reply, index) => (
-                        <article
-                          className="inbox-thread-reply"
-                          key={reply.rawCommentId}
-                        >
-                          <Avatar
-                            imageUrl={reply.authorAvatarUrl}
-                            name={reply.authorDisplayName}
-                            tone={index % 2 === 0 ? "violet" : "mint"}
-                          />
-                          <div>
-                            <header>
-                              <strong>
-                                {reply.authorDisplayName ?? "이름 없는 시청자"}
-                              </strong>
-                              <span>{getRelativeDate(reply.publishedAt)}</span>
-                            </header>
-                            {isInitiallyVisibleSource(reply.reviewLevel) &&
-                            reply.sourceAvailable &&
-                            reply.safeSourceText ? (
-                              <p>{reply.safeSourceText}</p>
-                            ) : (
-                              <>
-                                <p>{getReplySummary(reply)}</p>
-                                {reply.reviewLevel === "risk" &&
-                                reply.sourceAvailable ? (
-                                  <SourceReveal
-                                    commentId={reply.rawCommentId}
-                                    label="위험 답글 원문 확인"
-                                  />
-                                ) : null}
-                              </>
-                            )}
-                            <span className="inbox-reply-like">
-                              <Heart aria-hidden="true" />
-                              {reply.likeCount}
-                            </span>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="inbox-no-replies">
-                      <ChatCircleDots aria-hidden="true" weight="duotone" />
-                      <p>아직 저장된 대댓글이 없습니다.</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="inbox-locked-composer">
-                  <div>
-                    <LockKey aria-hidden="true" weight="fill" />
-                    <p>
-                      답글 작성은 YouTube 게시·증거 저장 구현 후 사용할 수
-                      있습니다.
-                    </p>
-                  </div>
-                  <label>
-                    <span className="sr-only">답글 작성</span>
-                    <textarea
-                      disabled
-                      placeholder="답글 작성 준비 중"
-                      rows={2}
-                    />
-                  </label>
-                  <button className="button button-primary" disabled type="button">
-                    <PaperPlaneRight aria-hidden="true" weight="fill" />
-                    답글 보내기
-                  </button>
-                </div>
-              </section>
-
-              <aside className="inbox-insights" aria-label="선택한 댓글 분석">
-                <header>
-                  <div>
-                    <p>AI ANALYSIS</p>
-                    <h2>운영 인사이트</h2>
-                  </div>
-                  <Sparkle aria-hidden="true" weight="duotone" />
-                </header>
-
-                <div className="inbox-insight-summary">
-                  <ReviewBadge
-                    classificationStatus={selectedItem.classificationStatus}
-                    level={selectedItem.reviewLevel}
-                  />
-                  <strong>
-                    {selectedItem.category
-                      ? CATEGORY_LABELS[selectedItem.category]
-                      : "분석 준비 중"}
-                  </strong>
-                  <p>{getInsightDescription(selectedItem)}</p>
-                  <span>
-                    {ANALYSIS_STATE_LABELS[selectedItem.analysisState]}
-                  </span>
-                </div>
-
-                <dl className="inbox-analysis-facts">
-                  <div>
-                    <dt>댓글 유형</dt>
-                    <dd>
-                      {selectedItem.category
-                        ? CATEGORY_LABELS[selectedItem.category]
-                        : "분석 전"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>확실성</dt>
-                    <dd>{getCertainty(selectedItem)}</dd>
-                  </div>
-                  <div>
-                    <dt>추천</dt>
-                    <dd>
-                      {selectedItem.recommendedAction
-                        ? RECOMMENDED_ACTION_LABELS[
-                            selectedItem.recommendedAction
-                          ]
-                        : "분석 전"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>조치 상태</dt>
-                    <dd>
-                      {selectedItem.actionState
-                        ? ACTION_STATE_LABELS[selectedItem.actionState]
-                        : "아직 요청 없음"}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="inbox-observation-badges">
-                  <span
-                    className={`source-kind-badge ${
-                      selectedIsPublic ? "is-public" : "is-owned"
-                    }`}
-                  >
-                    {selectedIsPublic ? "공개 URL" : "내 채널"}
-                  </span>
-                  {selectedIsPublic ? (
-                    <span className="source-readonly-badge">읽기 전용</span>
+                    </details>
                   ) : null}
                 </div>
-
-                {selectedItem.classificationTrace ? (
-                  <ClassificationTrace trace={selectedItem.classificationTrace} />
-                ) : null}
-
-                <SupersededRiskNotice item={selectedItem} />
-                <CorrectionForm
-                  correctionAction={correctionAction}
-                  item={selectedItem}
-                />
-                <ModerationActions
-                  item={selectedItem}
-                  moderationAction={moderationAction}
-                />
-              </aside>
-            </>
-          ) : null}
-        </div>
+                <a className={styles.video} href={`https://www.youtube.com/watch?v=${encodeURIComponent(item.youtubeVideoId)}`} target="_blank" rel="noreferrer" aria-label={`${title} YouTube에서 보기`}>
+                  {item.videoThumbnailUrl ? <Image alt={`${title} 썸네일`} width={110} height={67} src={item.videoThumbnailUrl} unoptimized /> : null}
+                  <span>{title}</span>
+                </a>
+                <details className={styles.review} open={selectedCommentId === item.rawCommentId || undefined}>
+                  <summary aria-label="댓글 검토 및 조치"><DotsThreeVertical aria-hidden="true" weight="bold" /><span className="sr-only">댓글 검토 및 조치</span></summary>
+                  <div className={styles.reviewContent}>
+                    <h3>댓글 검토</h3>
+                    <ReviewBadge classificationStatus={item.classificationStatus} level={item.reviewLevel} />
+                    <p>{getInsightDescription(item)}</p>
+                    <dl className={styles.facts}>
+                      <div><dt>댓글 유형</dt><dd>{item.category ? CATEGORY_LABELS[item.category] : "분석 전"}</dd></div>
+                      <div><dt>확실성</dt><dd>{getCertainty(item)}</dd></div>
+                      <div><dt>추천</dt><dd>{item.recommendedAction ? RECOMMENDED_ACTION_LABELS[item.recommendedAction] : "분석 전"}</dd></div>
+                      <div><dt>조치 상태</dt><dd>{item.actionState ? ACTION_STATE_LABELS[item.actionState] : "아직 요청 없음"}</dd></div>
+                    </dl>
+                    {item.classificationTrace ? <ClassificationTrace trace={item.classificationTrace} /> : null}
+                    <CorrectionForm correctionAction={correctionAction} item={item} />
+                    <ModerationActions item={item} moderationAction={moderationAction} />
+                  </div>
+                </details>
+              </article>
+            );
+          })}
+        </section>
       )}
 
       {data.items.length > 0 && totalPages > 1 ? (

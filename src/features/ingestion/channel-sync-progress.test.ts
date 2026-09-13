@@ -250,7 +250,7 @@ describe("channel sync Server Actions", () => {
     ).rejects.toThrow("redirect:/app/connect/youtube?sync=started");
 
     expect(requireViewer).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith("configure_channel_comment_sync", {
+    expect(rpc).toHaveBeenCalledWith("configure_channel_comment_sync_cycle", {
       target_workspace_id: "workspace-1",
       target_start_date: "2026-08-01",
     });
@@ -320,9 +320,13 @@ describe("channel sync Server Actions", () => {
       setChannelCommentSyncEnabledAction(formData),
     ).rejects.toThrow("redirect:/app/connect/youtube?sync=paused");
 
-    expect(rpc).toHaveBeenNthCalledWith(1, "request_channel_comment_sync_now", {
-      target_workspace_id: "workspace-1",
-    });
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "request_channel_comment_sync_cycle_now",
+      {
+        target_workspace_id: "workspace-1",
+      },
+    );
     expect(rpc).toHaveBeenNthCalledWith(2, "set_channel_comment_sync_enabled", {
       target_workspace_id: "workspace-1",
       target_enabled: false,

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CommentInbox } from "./comment-inbox";
@@ -69,6 +69,8 @@ const item: InboxItem = {
   safeSourceText: "주의 댓글 원문",
   analysisId: "analysis-1",
   classificationStatus: "decided",
+  aiClassificationStatus: "decided",
+  resolvedByUser: false,
   classificationTrace: null,
   category: "toxic_but_actionable",
   reviewLevel: "caution",
@@ -123,593 +125,144 @@ const item: InboxItem = {
   ],
 };
 
-const renderInbox = (
-  inboxItem: InboxItem,
-  reviewLevels: Array<NonNullable<InboxItem["reviewLevel"]>> = [
-    "caution",
-    "risk",
-  ],
-) =>
-  render(
-    <CommentInbox
-      allowExpressionAction={vi.fn()}
-      correctionAction={vi.fn()}
-      moderationAction={vi.fn()}
-      data={{ items: [inboxItem], total: 1 }}
-      filters={{ reviewLevels }}
-      videos={[{ id: "video-1", title: "새 영상" }]}
-    />,
-  );
+const renderInbox = (overrides: Partial<InboxItem> = {}, selected = false) => render(
+  <CommentInbox
+    allowExpressionAction={vi.fn()} correctionAction={vi.fn()} moderationAction={vi.fn()}
+    data={{ items: [{ ...item, ...overrides }], total: 1 }}
+    filters={{ reviewLevels: ["safe", "caution", "risk"] }}
+    selectedCommentId={selected ? item.rawCommentId : null}
+    videos={[{ id: "video-1", title: "새 영상" }]}
+  />
+);
 
-describe("a judgement the AI has since raised", () => {
-  it("tells the creator without moving the level back", () => {
-    // AI 는 추천하고 사람이 정한다. 다만 새 위험 신호를 삼키지는 않는다.
-    renderInbox({ ...item, reviewLevel: "safe", aiReviewLevel: "risk" }, [
-      "safe",
-    ]);
-
-    expect(
-      screen.getByText("다시 분석했을 때 위험으로 나왔습니다"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("안전").length).toBeGreaterThan(0);
+describe("Comment Inbox feed", () => {
+  it("shows refined caution feedback once and keeps the raw text out of the DOM", () => {
+    renderInbox();
+    expect(screen.getAllByText("자막 크기를 키워 달라는 요청", { selector: "p" })).toHaveLength(1);
+    expect(screen.queryByText("주의 댓글 원문")).not.toBeInTheDocument();
+    expect(screen.getByText("거친 표현 포함")).toBeVisible();
+    expect(screen.getByRole("button", { name: "원문 보기" })).toBeVisible();
   });
-
-  it("stays quiet when the creator already sees the risk", () => {
-    renderInbox({ ...item, reviewLevel: "risk", aiReviewLevel: "risk" }, [
-      "risk",
-    ]);
-
-    expect(
-      screen.queryByText("다시 분석했을 때 위험으로 나왔습니다"),
-    ).not.toBeInTheDocument();
+  it("requires a warning before fetching the source", () => {
+    const fetcher = vi.spyOn(globalThis, "fetch");
+    renderInbox();
+    fireEvent.click(screen.getByRole("button", { name: "원문 보기" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("유해한 표현이 포함될 수 있습니다");
+    expect(fetcher).not.toHaveBeenCalled();
+    fetcher.mockRestore();
   });
-
-  it("stays quiet when the AI itself did not find risk", () => {
-    renderInbox({ ...item, reviewLevel: "safe", aiReviewLevel: "caution" }, [
-      "safe",
-    ]);
-
-    expect(
-      screen.queryByText("다시 분석했을 때 위험으로 나왔습니다"),
-    ).not.toBeInTheDocument();
+  it("shows safe source directly without claiming an AI rewrite", () => {
+    renderInbox({ reviewLevel: "safe", safeSourceText: "설명이 좋았어요", replies: [], replyCount: 0 });
+    expect(screen.getByText("설명이 좋았어요")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "원문 보기" })).not.toBeInTheDocument();
+    expect(screen.queryByAltText("시프티가 표현을 정리했어요")).not.toBeInTheDocument();
   });
-});
-
-describe("allowing a channel expression", () => {
-  // 주의 댓글의 원문은 목록 데이터에 실려 오지 않는다. 그래서 등록 폼은 원문을
-  // 펼친 뒤에야 나오고, 여기서는 물어볼 자격이 있는 댓글인지까지만 본다.
-  it("never asks before the creator has opened the source", () => {
-    renderInbox(item);
-
-    expect(
-      screen.queryByRole("button", { name: "칭찬으로 등록" }),
-    ).not.toBeInTheDocument();
+  it("shows a risk author's profile while protecting the source and keeping its warning", () => {
+    renderInbox({ reviewLevel: "risk", authorDisplayName: "위험 작성자", authorAvatarUrl: "https://example.com/risk.jpg", safeSourceText: "유해 원문" });
+    expect(screen.getByText("위험 작성자")).toBeVisible();
+    expect(screen.getByAltText("위험 작성자 프로필")).toHaveAttribute("src", "https://example.com/risk.jpg");
+    expect(screen.queryByText("유해 원문")).not.toBeInTheDocument();
+    expect(screen.queryByText("보호된 작성자")).not.toBeInTheDocument();
+    expect(screen.getByText("위험 댓글 · 내용 보호됨")).toBeVisible();
   });
-});
-
-describe("CommentInbox", () => {
-  it("hides caution source text and shows the feedback core in the queue", () => {
-    render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{ items: [item], total: 1 }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[{ id: "video-1", title: "새 영상" }]}
-      />,
-    );
-
-    expect(
-      screen.getByText("자막 크기를 키워 달라는 요청", {
-        selector: ".inbox-sanitized-feedback",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("주의 댓글 원문", {
-        selector: ".inbox-sanitized-feedback",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getAllByText("주의", { selector: ".review-level" }),
-    ).not.toHaveLength(0);
-    expect(
-      screen.getByText("유해하지만 참고할 내용 있음", { selector: "dd" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("주의 댓글 원문", {
-        selector: ".comment-source-text",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "원문 확인" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("checkbox", {
-        name: /^내 기준 개인화에 사용/,
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("checkbox", {
-        name: /^향후 공통 모델 학습 후보로 표시/,
-      }),
-    ).toBeInTheDocument();
+  it("keeps protected replies collapsed and never includes caution raw text", () => {
+    renderInbox();
+    const disclosure = screen.getByText("답글 보기 (3)");
+    expect(disclosure.closest("details")).not.toHaveAttribute("open");
+    expect(screen.queryByText("주의 답글 원문")).not.toBeInTheDocument();
+    expect(screen.getByText("보호 대상 시청자")).toBeInTheDocument();
+    expect(screen.getByText("같은 개선 요청")).toBeInTheDocument();
   });
-
-  it("does not claim a personalization the pipeline never performs", () => {
-    // 동의를 미리 받아 두는 칸이다. 읽는 코드가 생기기 전까지는 한다고 쓰지 않는다.
-    renderInbox(item);
-
-    expect(
-      screen.getByRole("checkbox", { name: /^내 기준 개인화에 사용/ }),
-    ).toHaveAccessibleName(/지금은 판단에 쓰지 않습니다/);
-  });
-
-  it("keeps risk source text out of the queue preview", () => {
+  it.each(["risk", null] as const)("shows comment and reply profiles for level %s without exposing raw text", (reviewLevel) => {
     renderInbox({
-      ...item,
-      reviewLevel: "risk",
-      safeSourceText: "위험 댓글 원문",
-      neutralText: "위험 댓글 요약",
-    });
-
-    expect(
-      screen.getByText("위험 댓글 요약", {
-        selector: ".inbox-sanitized-feedback",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("위험 댓글 원문", {
-        selector: ".inbox-sanitized-feedback",
-      }),
-    ).not.toBeInTheDocument();
+      reviewLevel,
+      authorDisplayName: "댓글 게시자",
+      authorAvatarUrl: "https://example.com/author.jpg",
+      safeSourceText: "숨겨야 하는 원문",
+      replies: [{ ...item.replies[2], reviewLevel, authorDisplayName: "답글 게시자", authorAvatarUrl: "https://example.com/reply.jpg" }],
+      replyCount: 1,
+    }, true);
+    expect(screen.getByText("댓글 게시자")).toBeVisible();
+    expect(screen.getByAltText("댓글 게시자 프로필")).toHaveAttribute("src", "https://example.com/author.jpg");
+    expect(screen.getByText("답글 게시자")).toBeVisible();
+    expect(screen.getByAltText("답글 게시자 프로필")).toHaveAttribute("src", "https://example.com/reply.jpg");
+    expect(screen.queryByText("숨겨야 하는 원문")).not.toBeInTheDocument();
   });
-
-  it("falls back to the summary when caution source text is unavailable", () => {
-    renderInbox({
-      ...item,
-      sourceAvailable: false,
-      safeSourceText: null,
-      neutralText: "원문을 사용할 수 없는 주의 댓글 요약",
-    });
-
-    expect(
-      screen.getByText("원문을 사용할 수 없는 주의 댓글 요약", {
-        selector: ".inbox-sanitized-feedback",
-      }),
-    ).toBeInTheDocument();
+  it("does not offer a reply composer or nonfunctional reactions", () => {
+    renderInbox({ replies: [], replyCount: 0 });
+    expect(screen.getByText("답글 0개")).toBeVisible();
+    expect(screen.queryByText(/답글 보기/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /좋아요|싫어요|답글 보내기/ })).not.toBeInTheDocument();
   });
-
-  it("shows the selected conversation with reply disclosure and an honest locked composer", () => {
-    renderInbox(item);
-
-    expect(
-      screen.getByRole("link", { name: "답글 3개 보기" }),
-    ).toHaveAttribute("href", expect.stringContaining("selected=comment-1"));
-    expect(
-      screen.getByRole("heading", { name: "댓글 대화" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("확인해서 다음 영상에 반영할게요."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("주의 답글 원문")).toBeInTheDocument();
-    expect(screen.getByText("위험 답글 요약")).toBeInTheDocument();
-    expect(screen.queryByText("위험 답글 원문")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "위험 답글 원문 확인" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "답글 작성은 YouTube 게시·증거 저장 구현 후 사용할 수 있습니다.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "답글 보내기" })).toBeDisabled();
+  it("uses the source's real video and author assets", () => {
+    renderInbox({ authorAvatarUrl: "https://example.com/profile.jpg", videoThumbnailUrl: "https://i.ytimg.com/vi/video-1/default.jpg" });
+    expect(screen.getByAltText("시청자 프로필")).toHaveAttribute("src", "https://example.com/profile.jpg");
+    expect(screen.getByRole("link", { name: "새 영상 YouTube에서 보기" })).toHaveAttribute("href", "https://www.youtube.com/watch?v=video-1");
+    expect(screen.getByAltText("새 영상 썸네일")).toHaveAttribute("src", "https://i.ytimg.com/vi/video-1/default.jpg");
   });
-
-  it("uses stored profile and video images when the source provides them", () => {
-    renderInbox({
-      ...item,
-      authorAvatarUrl: "https://example.com/viewer.jpg",
-      videoThumbnailUrl: "https://example.com/video.jpg",
-    });
-
-    expect(
-      screen.getAllByRole("img", { name: "시청자 프로필" }),
-    ).not.toHaveLength(0);
-    expect(
-      screen.getAllByRole("img", { name: "새 영상 썸네일" }),
-    ).not.toHaveLength(0);
+  it("does not invent a thumbnail when none was imported", () => {
+    renderInbox();
+    expect(screen.queryByAltText("새 영상 썸네일")).not.toBeInTheDocument();
   });
-
-  it("shows connected queue context without inventing metadata", () => {
-    renderInbox({
-      ...item,
-      category: "constructive_feedback",
-      videoThumbnailUrl: "https://example.com/video.jpg",
-    });
-
-    expect(
-      screen.getAllByText("시프티가 찾은 긍정적 피드백"),
-    ).not.toHaveLength(0);
-    expect(
-      screen.getAllByRole("img", { name: "시프티 프로필" }),
-    ).not.toHaveLength(0);
-    expect(screen.getAllByText("새 영상").length).toBeGreaterThanOrEqual(2);
-    expect(
-      screen.getAllByRole("img", { name: "새 영상 썸네일" }),
-    ).toHaveLength(2);
-    expect(screen.getByText("답글 3개", { selector: "span" })).toBeInTheDocument();
+  it("preserves review and correction controls under the comment menu", () => {
+    renderInbox({ classificationTrace: certaintyTrace }, true);
+    expect(screen.getByText("댓글 검토")).toBeVisible();
+    expect(screen.getByText("높음 · clear")).toBeVisible();
+    expect(screen.getByText("AI 판단 수정 및 개인화")).toBeVisible();
+    expect(screen.getByRole("button", { name: "검토 대기로 이동" })).toBeVisible();
   });
-
-  it("shows Shifty in the queue risk context and keeps the primary conversation badge", () => {
-    const { container } = renderInbox({
-      ...item,
-      category: "abusive_no_signal",
-      reviewLevel: "risk",
-    });
-
-    expect(
-      container.querySelector(".inbox-queue-context-risk .inbox-shifty-avatar"),
-    ).toBeInTheDocument();
-    expect(
-      container.querySelector(".inbox-thread-author .review-level-risk svg"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "댓글 대화" })).getByRole(
-        "img",
-        { name: "시프티 프로필" },
-      ),
-    ).toBeInTheDocument();
+  it("allows an unresolved classification to be explicitly corrected", () => {
+    renderInbox({ reviewLevel: null, classificationStatus: "review_queue", classificationTrace: certaintyTrace }, true);
+    expect(screen.getByText("판단 보류 · 내용 보호됨")).toBeVisible();
+    const select = screen.getByLabelText("검토 등급", { selector: "select" });
+    expect(select).toBeRequired();
+    expect(select).toHaveValue("");
   });
-
-  it("shows the review level once in a queue item", () => {
-    const { container } = renderInbox({
-      ...item,
-      category: "abusive_no_signal",
-      reviewLevel: "risk",
-    });
-
-    expect(
-      container.querySelector(".inbox-queue-item .review-level"),
-    ).not.toBeInTheDocument();
-    expect(
-      container.querySelector(".inbox-queue-item .inbox-queue-context-risk"),
-    ).toHaveTextContent("위험 댓글 · 내용 보호됨");
+  it("retains the warning when AI finds new risk after a creator correction", () => {
+    renderInbox({ reviewLevel: "caution", aiReviewLevel: "risk" }, true);
+    expect(screen.getByText("다시 분석했을 때 위험으로 나왔습니다")).toBeVisible();
   });
-
-  it("uses a role label instead of repeating the risk state in the conversation card", () => {
-    renderInbox({
-      ...item,
-      category: "abusive_no_signal",
-      reviewLevel: "risk",
-    });
-
-    const conversation = screen.getByRole("region", { name: "댓글 대화" });
-
-    expect(
-      within(conversation).getByText("시프티 분석 결과"),
-    ).toBeInTheDocument();
-    expect(
-      within(conversation).queryByText("위험 댓글 · 내용 보호됨"),
-    ).not.toBeInTheDocument();
+  it("does not ask to allow channel expressions before opening the source", () => {
+    renderInbox();
+    expect(screen.queryByText(/우리 채널.*칭찬/)).not.toBeInTheDocument();
   });
-
-  it("uses Shifty's safe message instead of the uncertain label", () => {
-    const { container } = renderInbox(
-      {
-        ...item,
-        reviewLevel: "safe",
-        category: "uncertain",
-        safeSourceText: "편집 스타일은 취향에 따라 다를 수 있어요.",
-      },
-      ["safe"],
-    );
-
-    expect(
-      screen.getAllByText("시프티가 보기에 안전해요!"),
-    ).not.toHaveLength(0);
-    expect(
-      container.querySelector(".inbox-queue-context-safe .inbox-shifty-avatar"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("판단 어려움")).not.toBeInTheDocument();
+  it.each([
+    ["published", "게시 승인"], ["heldForReview", "검토 대기로 이동"], ["rejected", "거절하여 숨기기"],
+  ] as const)("omits the no-op moderation action for %s", (status, absent) => {
+    renderInbox({ sourceModerationStatus: status }, true);
+    expect(screen.queryByRole("button", { name: absent })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("YouTube 댓글 조치").querySelectorAll("form")).toHaveLength(2);
   });
-
-  it("does not render a reply disclosure when there are no stored replies", () => {
-    renderInbox({ ...item, replyCount: 0, replies: [] });
-
-    expect(
-      screen.queryByRole("link", { name: "답글 0개 보기" }),
-    ).not.toBeInTheDocument();
+  it("only offers permanent deletion when server eligibility permits it", () => {
+    const view = renderInbox({}, true);
+    expect(screen.queryByRole("button", { name: "내 댓글 영구 삭제" })).not.toBeInTheDocument();
+    view.unmount();
+    renderInbox({ deleteEligible: true }, true);
+    const button = screen.getByRole("button", { name: "내 댓글 영구 삭제" });
+    expect(button).toHaveAttribute("value", "delete");
+    expect(button.closest("form")).toHaveFormValues({ rawCommentId: item.rawCommentId, sourceImportJobId: item.sourceImportJobId });
   });
-
-  it("shows recent comment time relatively", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-07T12:00:00.000Z"));
-
-    renderInbox({
-      ...item,
-      publishedAt: "2026-08-07T11:55:00.000Z",
-    });
-
-    expect(screen.getAllByText("5분 전")).not.toHaveLength(0);
+  it("keeps public comments read-only without personalization or moderation", () => {
+    renderInbox({ sourceKind: "public_url", deleteEligible: true }, true);
+    expect(screen.getByText("공개 URL · 읽기 전용")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "내 댓글 영구 삭제" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("YouTube 댓글 조치")).not.toBeInTheDocument();
+    expect(screen.queryByText("내 기준 개인화에 사용")).not.toBeInTheDocument();
+    expect(screen.getByText("AI 판단 수정")).toBeVisible();
   });
-
-  it("shows categorical certainty from the verification trace", () => {
-    renderInbox({
-      ...item,
-      classificationTrace: certaintyTrace,
-      confidence: 0.82,
-    });
-
-    expect(screen.getByText("확실성", { selector: "dt" })).toBeInTheDocument();
-    expect(
-      screen.getByText("높음 · clear", { selector: "dd" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("82%", { selector: "dd" })).not.toBeInTheDocument();
+  it("keeps filters and sorting in pagination links", () => {
+    render(<CommentInbox allowExpressionAction={vi.fn()} correctionAction={vi.fn()} moderationAction={vi.fn()} data={{ items: [item], total: 70 }} filters={{ reviewLevels: ["risk"], videoIds: ["one", "two"], period: "30d", sort: "likes", search: "편집", limit: 25, offset: 25 }} videos={[]} />);
+    const href = screen.getByRole("link", { name: "다음 페이지" }).getAttribute("href")!;
+    const params = new URL(href, "http://localhost").searchParams;
+    expect(params.getAll("video")).toEqual(["one", "two"]);
+    expect(params.get("period")).toBe("30d");
+    expect(params.get("sort")).toBe("likes");
+    expect(params.get("page")).toBe("3");
+    expect(params.get("levels")).toBe("risk");
   });
-
-  it("shows safe source immediately without a reveal button", () => {
-    renderInbox(
-      {
-        ...item,
-        reviewLevel: "safe",
-        category: "positive",
-        safeSourceText: "오늘 영상도 잘 봤어요.",
-      },
-      ["safe"],
-    );
-
-    expect(
-      screen.getByText("오늘 영상도 잘 봤어요.", {
-        selector: ".comment-source-text",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "원문 확인" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("requires acknowledgment before showing caution source", () => {
-    const { container } = renderInbox({
-      ...item,
-      safeSourceText: "주의 댓글 원문",
-    });
-
-    expect(
-      screen.queryByText("주의 댓글 원문", {
-        selector: ".comment-source-text",
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "원문 확인" }),
-    ).toBeInTheDocument();
-
-    const warningRow = screen
-      .getByText("원문에는 거친 표현이 포함될 수 있습니다.")
-      .closest(".inbox-source-warning-row");
-
-    expect(warningRow).toBeInTheDocument();
-    expect(
-      within(warningRow as HTMLElement).getByRole("button", {
-        name: "원문 확인",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      container.querySelector(".inbox-protected-source-caution"),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps risk source out of the initial card and offers acknowledgment", () => {
-    renderInbox({
-      ...item,
-      reviewLevel: "risk",
-      safeSourceText: null,
-      neutralText: "위험 댓글 요약",
-    });
-
-    expect(screen.queryByText("위험 댓글 원문")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "원문 확인" }),
-    ).toBeInTheDocument();
-  });
-
-  it("explains why no numbers are shown when the queue is empty", () => {
-    render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{ items: [], total: 0 }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.getByRole("heading", { name: "현재 조건에 맞는 댓글이 없습니다" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps active filters in pagination links", () => {
-    render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{ items: [item], total: 30 }}
-        filters={{
-          reviewLevels: ["caution", "risk"],
-          category: "toxic_but_actionable",
-        }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.getByRole("link", { name: "다음 페이지" }),
-    ).toHaveAttribute(
-      "href",
-      expect.stringMatching(
-        /\/app\/inbox\?.*levels=caution.*levels=risk.*category=toxic_but_actionable.*page=2/,
-      ),
-    );
-  });
-
-  it("shows exact moderation actions and only exposes delete when eligible", () => {
-    const { rerender } = render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{ items: [item], total: 1 }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "검토 대기로 이동" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "게시 승인" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "거절하여 숨기기" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "내 댓글 영구 삭제" }),
-    ).not.toBeInTheDocument();
-
-    rerender(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{
-          items: [{ ...item, deleteEligible: true }],
-          total: 1,
-        }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "내 댓글 영구 삭제" }),
-    ).toBeInTheDocument();
-  });
-
-  it("drops the action that would change nothing and says the current state", () => {
-    // 이미 게시된 댓글에 「게시 승인」을 눌러도 아무 일이 없다. 50 유닛만 나간다.
-    const { rerender } = render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{
-          items: [{ ...item, sourceModerationStatus: "published" }],
-          total: 1,
-        }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "게시 승인" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "검토 대기로 이동" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/현재 게시됨/)).toBeInTheDocument();
-
-    rerender(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{
-          items: [{ ...item, sourceModerationStatus: "heldForReview" }],
-          total: 1,
-        }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "검토 대기로 이동" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "게시 승인" }),
-    ).toBeInTheDocument();
-  });
-
-  it("keeps every action when the state is unknown", () => {
-    // API 키로 읽던 시절 댓글은 상태가 없다. 모르면 가리지 않는다.
-    render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{
-          items: [{ ...item, sourceModerationStatus: null }],
-          total: 1,
-        }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "게시 승인" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/현재 /)).not.toBeInTheDocument();
-  });
-
-  it("marks public observations read-only and removes write-only controls", () => {
-    render(
-      <CommentInbox
-        allowExpressionAction={vi.fn()}
-        correctionAction={vi.fn()}
-        moderationAction={vi.fn()}
-        data={{
-          items: [
-            {
-              ...item,
-              sourceImportJobId: "public-import-1",
-              sourceKind: "public_url",
-            },
-          ],
-          total: 1,
-        }}
-        filters={{ reviewLevels: ["caution", "risk"] }}
-        videos={[]}
-      />,
-    );
-
-    expect(screen.getByText("공개 URL")).toBeInTheDocument();
-    expect(screen.getByText("읽기 전용")).toBeInTheDocument();
-    expect(
-      screen.getByText(/YouTube 조치는 사용할 수 없습니다/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "검토 대기로 이동" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("checkbox", {
-        name: /^내 기준 개인화에 사용/,
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("checkbox", {
-        name: /^향후 공통 모델 학습 후보로 표시/,
-      }),
-    ).not.toBeInTheDocument();
-    expect(
-      document.querySelector(
-        'input[name="sourceImportJobId"][value="public-import-1"]',
-      ),
-    ).toBeInTheDocument();
+  it("shows a real empty state instead of mock metrics", () => {
+    render(<CommentInbox allowExpressionAction={vi.fn()} correctionAction={vi.fn()} moderationAction={vi.fn()} data={{ items: [], total: 0 }} filters={{ reviewLevels: ["safe", "caution", "risk"] }} videos={[]} />);
+    expect(screen.getByRole("heading", { name: "현재 조건에 맞는 댓글이 없습니다" })).toBeVisible();
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 });

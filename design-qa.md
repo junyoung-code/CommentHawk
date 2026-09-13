@@ -89,6 +89,34 @@ final result: passed
 
 ---
 
+## YouTube Connection Simplification QA — 2026-08-20
+
+### Evidence
+
+- Selected visual target: `/Users/junyoung/.codex/generated_images/01a01809-84fa-7763-8a4d-dadb81c83ecb/exec-108ac708-7946-4410-bf6e-9f93f11f630d.png` (1440 × 1024 px)
+- Implemented route: `http://127.0.0.1:3000/app/connect/youtube`
+- Intended state: authenticated, connected YouTube channel, configured start date, active or completed sync
+
+### Implemented Scope
+
+- Removed the overview navigation item and changed `/app` to redirect to `/app/connect/youtube`.
+- Preserved the remaining sidebar navigation and theme controls.
+- Reworked the connected-channel surface around a compact start date, three operational stages, real latest-run metrics, a compact status banner, and the existing sync/disconnect actions.
+- Kept all numbers tied to persisted sync progress; no example percentage, fabricated ETA, or placeholder connected data was added.
+
+### Verification
+
+- Focused tests: 15 passed.
+- Lint: passed with no warnings.
+- `git diff --check`: passed.
+- Full test suite: 806 passed, 4 skipped, 3 failed in pre-existing channel-sync-cycle work outside this UI change.
+- Production build compiled successfully, then type checking stopped in the pre-existing `configure_channel_comment_sync_cycle` call because generated database types do not yet include that RPC.
+- Browser visual comparison is blocked because both available browser surfaces redirect the local route to `/auth/sign-in`; no authenticated connected-channel state was available to capture.
+
+final result: blocked
+
+---
+
 ## Shifty Identity Update QA — 2026-08-08
 
 ### Evidence
@@ -192,5 +220,95 @@ No actionable P0, P1, or P2 findings remain.
 - Production build: passed with Next.js 16.2.11.
 - Browser console: no warnings or errors.
 - Focused visual comparison: passed.
+
+final result: passed
+
+---
+
+## Single-screen landing refresh — 2026-09-12
+
+### Evidence and scope
+
+- Source visual truth: `docs/qa/landing-refresh/approved-target.png` (1477 × 1065).
+- Implementation: `http://localhost:3000/`, `docs/qa/landing-refresh/desktop-final.png` (1477 × 1065, CSS viewport 1477 × 1065, devicePixelRatio 1).
+- Mobile: `docs/qa/landing-refresh/mobile-final.png` and `mobile-cards.png` (390 × 844, CSS viewport 390 × 844).
+- Default state: anonymous, source collapsed, no reaction selected, guide closed. The original left card is visible per the user's explicit mockup selection; no actual customer comments are exposed.
+- Full-view comparison: source and rendered screenshots were emitted together twice through CUA. Native `getScreenshot` used after viewport settled; the first `fullPage` browser capture had an internal scale mismatch and was discarded.
+- Focused review: comment content, author alignment, neutral metadata, closed/open source control, and guide were inspected at full image resolution with DOM bounding boxes. All small text was legible in the final full-resolution comparison; the mobile-cards capture also isolates these details. No additional crop was needed.
+
+### Comparison history
+
+1. Initial desktop: [P2] scene negative margin overlapped the bottom of the connection button; [P2] comment body typography was smaller than target; [P2] footer extended below the intended frame. Removed negative margin, increased both card bodies together to 1.62cqw, tightened intro/footer spacing. Initial capture: `docs/qa/landing-refresh/desktop.png`.
+2. Initial mobile: [P2] subtitle split a Korean word. Added local `word-break: keep-all`; final captures show two complete phrases and no horizontal overflow.
+3. Final desktop/mobile: no remaining P0/P1/P2 findings. CTA fully visible; both comment bodies 23.93px with matching line height, aligned under author names; source panel opens with full card width; mobile cards stay readable at 17px.
+
+### Required fidelity surfaces
+
+- Typography: existing Korean font stack reused, heavy two-line hero heading, matched body size across cards, grey metadata. Browser-rendered text remains editable/selectable; raster is limited to scene/brand assets.
+- Spacing: centered single hero; compact comment cards sit on tray rims; small owl legend above right card. Mobile intentionally stacks the cards below the scene for readability.
+- Colors: neutral off-white, charcoal text, blue CTA/headline, grey controls and small legend, amber caution badge. Stable CSS tokens replace baked image text.
+- Imagery: 1884 × 835 raster scene generated from approved target; supplied brand logo and Shifty profile used directly. No image regeneration is needed for future text/spacing edits.
+- Copy: approved heading, right comment ending with `같아요!`, identical `@example · 2시간 전`, preservation principle. Footer explicitly labels illustrative data. Header guide is a short native dialog; Inbox simulation remains deferred per current scope.
+
+### Verification
+
+- `npm run lint`: passed.
+- `npm run test -- src/features/landing`: 40 tests passed (8 files).
+- `npm run build`: passed, including TypeScript and all 21 static pages. Initial sandbox run could not bind a local PostCSS worker port; identical build succeeded outside the sandbox, then was repeated after final CSS changes.
+- CUA browser: desktop/mobile source expand and collapse; guide open and Escape close; connection CTA reaches `/auth/sign-in?next=%2Fapp%2Fconnect%2Fyoutube` and renders the existing Google sign-in page. No external OAuth authorization was performed.
+- Example reaction/reply states covered by component tests; no moderation/backend writes added.
+- Browser error/warning logs: empty.
+- Updated landing E2E definitions to current structure; Playwright CLI was not run. Equivalent source/guide/navigation/mobile interactions were verified in the in-app browser.
+- Existing product/auth/inbox implementation and unrelated working-tree changes preserved.
+
+### Follow-up polish
+
+- [P3] The separated owl scene has small pose/feather and tray proportions differences from the generated mock; it retains the approved composition. Photographic badge artwork is generated; the header uses the exact supplied logo.
+- [P3] OS font rendering and capture softness can vary. Text, controls, and layout are now native UI and not flattened into the image.
+
+final result: passed
+
+
+## 2026-09-12 Comment Inbox refresh and Google-only sign-in
+
+- Target: approved filtered feed mock `exec-6ebff4e4-46a2-4fa2-bdc1-34f71c941fb0.png`, compared at 1353 × 1163.
+- Implementation: flat YouTube-style comment rows, compact source reveal, caution label `거친 표현 포함`, protected risk copy, small right-side video preview, red YouTube selector, quick and expandable advanced filters. Existing original-content, correction, and moderation safeguards retained.
+- Captures: `docs/qa/inbox-refresh/desktop-final.png`, `mobile.png` (390 × 844), `dark-review.png`, `sign-in.png`. Local comments are explicitly marked TEST FIXTURE. This fixture has no thumbnail URLs; production renders stored thumbnails when available, covered by component tests. No sample thumbnails or metrics were inserted into connected data.
+- Initial findings corrected: excessive header whitespace; undersized desktop avatar/refined text; mobile topbar overlap; inline reply/read-only label collision; narrow search/quick-filter tap targets.
+- Final visual review: desktop filter and list geometry follows the selected mock; mobile controls wrap without horizontal overflow (390px viewport and document width). Replies and per-comment review expand inline; dark mode is readable. Native text and existing brand assets replace raster mock text. The real app retains account controls and fixture/theme indicators; unsupported dislike/write-reply controls are omitted.
+- Browser interactions verified: caution filter, advanced period application and empty state, reset, likes sort URL, source-warning confirmation and collapse, stored reply expansion, per-comment review, theme switching. Sign-in renders only Google and no alternate/email control.
+- Verification: `npm run lint` passed; focused inbox/sign-in/landing-header tests passed (12 files, 61 tests); `npm run build` passed (TypeScript and 21 static pages); local transactional pgTAP feed tests passed (15 assertions, rollback). Playwright CLI suite was not run.
+- Deployment: new `20260912062237_inbox_feed_filters.sql` applied only to local Supabase. Pre-existing migration history mismatch was not repaired or removed. Production deployment must include this migration.
+- Remaining P3: browser capture softness; existing nontransparent owl/logo asset backgrounds in dark mode. No remaining blocking layout findings.
+
+final result: passed
+
+
+## YouTube connection integration into the primary checkout (2026-09-13)
+
+- Integrated the approved connection page, controls, chart styles, RPC type, SQL migration and SQL tests into `/Users/junyoung/Desktop/CrowdSift`.
+- Preserved the existing Inbox, landing page, hourly sync actions, and other database types; added only the YouTube route styles to the shared stylesheet.
+- Confirmed the original Chrome tab on `http://localhost:3000/app/connect/youtube` shows the new UI, the connected channel, 9 stored comments and the seven-day chart, with the real-data indicator.
+- The local database already contained the exact stats function and intended privileges. Recorded its previously missing migration history as `20260913055059`; no data reset was performed.
+- Focused UI/progress tests: 26 passed. Collection statistics pgTAP tests: 5 passed. ESLint and the Next.js production build passed.
+- Recorded the user's preference in `AGENTS.md`: new tasks use the existing project directory unless a separate worktree is explicitly requested.
+
+
+## YouTube connection within shared navigation (2026-09-13)
+
+- Supersedes the earlier full-bleed mock layout: keeps the Inbox sidebar and top-right theme controls on the connection route.
+- Reduced the profile from 156px to 128px, toggle from 74×44px to 62×38px, chart height from 122px to 100px, and settings row spacing.
+- Verified the connected channel and real total on localhost:3000 at the desktop viewport and 390×844 mobile viewport. Mobile controls stack with explicit spacing; restored the original browser viewport after checking.
+
+---
+
+# Latest review — 댓글 관리 기준 (2026-09-13)
+
+Source visual truth: `references/crowdsift-ui/2026-09-13-policy-approved.png` (1490×1056).
+Implementation: `docs/qa/policy-refresh/desktop-dark.png` (1488×1056), viewport 1488×1056 CSS px at 1× density.
+State: dark, three selected presets, empty allowance fields, explicitly labeled example preview.
+Full side-by-side comparison: `docs/qa/policy-refresh/comparison.png`. Focused typography/chip inspection used the original-resolution captures.
+Complete five-surface review, light/mobile captures, interaction verification and P2 correction history: `docs/qa/policy-refresh/design-qa.md`.
+Earlier P2 white owl background and clipped mobile active navigation were corrected and recaptured. Shared sidebar dimensions and slightly more compact typography are intentional product adaptations. Final browser warning/error log was empty.
 
 final result: passed

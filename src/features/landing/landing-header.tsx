@@ -1,107 +1,40 @@
 "use client";
 
-import { ArrowRight, ShieldCheck } from "@phosphor-icons/react";
+import { X } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 
-const sections = [
-  { id: "problems", label: "문제" },
-  { id: "solutions", label: "해결 방식" },
-  { id: "analysis", label: "AI 분석" },
-  { id: "integration", label: "연결" },
-] as const;
+import { BrandLogo } from "@/features/brand/brand-logo";
+import styles from "./landing.module.css";
 
 export function LandingHeader() {
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [scrollDirection, setScrollDirection] = useState<"up" | "down">("up");
-  const [activeSection, setActiveSection] = useState<string>();
-  const previousScrollY = useRef(0);
-
-  useEffect(() => {
-    let isScheduled = false;
-
-    const updateHeader = () => {
-      const currentScrollY = window.scrollY;
-      setIsScrolled(currentScrollY > 24);
-      setScrollDirection(
-        currentScrollY > previousScrollY.current ? "down" : "up",
-      );
-      previousScrollY.current = currentScrollY;
-      isScheduled = false;
-    };
-
-    const handleScroll = () => {
-      if (isScheduled) return;
-      isScheduled = true;
-      window.requestAnimationFrame(updateHeader);
-    };
-
-    updateHeader();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  useEffect(() => {
-    const targets = sections
-      .map(({ id }) => document.getElementById(id))
-      .filter((target): target is HTMLElement => target !== null);
-
-    if (targets.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const current = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-
-        if (current) setActiveSection(current.target.id);
-      },
-      { rootMargin: "-22% 0px -68%", threshold: [0, 0.25, 0.5, 0.75] },
-    );
-
-    targets.forEach((target) => observer.observe(target));
-    return () => observer.disconnect();
-  }, []);
+  const guide = useRef<HTMLDialogElement>(null);
 
   return (
-    <header
-      className={[
-        "landing-header",
-        isScrolled ? "landing-header-scrolled" : "",
-        scrollDirection === "down" ? "landing-header-down" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      id="top"
-    >
-      <Link className="brand" href="/" aria-label="CrowdSift 홈">
-        <span className="brand-mark" aria-hidden="true">
-          <ShieldCheck weight="fill" />
-        </span>
-        <strong>CrowdSift</strong>
-      </Link>
-
-      <nav aria-label="제품 소개">
-        {sections.map(({ id, label }) => (
-          <a
-            href={`#${id}`}
-            aria-current={activeSection === id ? "location" : undefined}
-            key={id}
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
-
-      <div className="header-actions">
-        <Link className="login-link" href="/auth/sign-in">
-          로그인
+    <>
+      <header className={styles.header}>
+        <Link className={styles.brand} href="/" aria-label="CrowdSift 홈">
+          <BrandLogo />
+          <strong>CrowdSift</strong>
         </Link>
-        <Link className="button button-primary button-small" href="/auth/sign-in">
-          시작하기
-          <ArrowRight aria-hidden="true" weight="bold" />
-        </Link>
-      </div>
-    </header>
+        <nav aria-label="제품 소개" className={styles.navigation}>
+          <button type="button" onClick={() => guide.current?.showModal()}>이용 방법</button>
+          <Link href="/auth/sign-in">로그인</Link>
+          <Link className={styles.start} href="/auth/sign-in">시작하기</Link>
+        </nav>
+      </header>
+      <dialog ref={guide} className={styles.dialog} aria-labelledby="guide-title" onClick={(event) => {
+        if (event.target === event.currentTarget) guide.current?.close();
+      }}>
+        <button className={styles.close} type="button" aria-label="이용 방법 닫기" onClick={() => guide.current?.close()}><X aria-hidden="true" size={22} /></button>
+        <h2 id="guide-title">시프티와 함께 댓글을 살펴봐요.</h2>
+        <ol>
+          <li><strong>YouTube 채널 연결</strong><p>로그인 후 내 채널을 연결하고, 댓글을 가져올 시작 날짜를 선택해요.</p></li>
+          <li><strong>필요한 의견 확인</strong><p>Comment Inbox에서 분류된 댓글과 시프티가 정리한 피드백을 확인해요.</p></li>
+          <li><strong>최종 결정은 직접</strong><p>필요할 때 원문을 펼쳐 보고, 실제 조치는 확인 후 실행해요.</p></li>
+        </ol>
+        <Link className={styles.connect} href="/auth/sign-in?next=%2Fapp%2Fconnect%2Fyoutube">내 채널 연결하기</Link>
+      </dialog>
+    </>
   );
 }

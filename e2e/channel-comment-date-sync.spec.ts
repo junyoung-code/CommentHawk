@@ -55,7 +55,7 @@ test("backfills fixture channel comments to a date and re-runs without duplicate
   await page.getByRole("button", { name: "댓글 가져오기 시작" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "초기 댓글 수집 완료" }),
+    page.getByText("초기 댓글 수집 완료", { exact: true }),
   ).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(".channel-sync-live-status")).toHaveText(
     "채널의 새 댓글을 자동으로 확인합니다.",

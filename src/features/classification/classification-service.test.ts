@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { FirstPassResult, ModelRun } from "./contracts";
 import {
   createClassificationService,
+  type ClassificationJobProgress,
   type ClassificationJobRepository,
   type ClassificationWorkItem,
   type StoredClassificationState,
@@ -56,6 +57,19 @@ const firstPassResult = (
     result: {
       candidateLevel,
       certainty: "clear",
+      intent:
+        candidateLevel === "danger"
+          ? "attack"
+          : candidateLevel === "caution"
+            ? "criticism"
+            : "neutral",
+      target:
+        candidateLevel === "danger"
+          ? "creator_person"
+          : candidateLevel === "caution"
+            ? "content"
+            : "none",
+      ambiguityReasons: [],
       feedbackPresent: candidateLevel !== "safe",
       locationOrScheduleMention: false,
       sensitiveTopicMatched: false,
@@ -74,6 +88,9 @@ const firstPassResult = (
 const terraResult: TerraVerdict = {
   verdictLevel: "caution",
   certainty: "clear",
+  intent: "criticism",
+  target: "content",
+  ambiguityReasons: [],
   reasonCodes: ["mockery"],
   hardRiskFlags: [],
   softRiskFlags: ["mockery"],
@@ -160,13 +177,15 @@ const createMemoryRepository = (initial?: StoredClassificationState) => {
     failItem: vi.fn(async (_itemId, errorCode) => {
       failed = errorCode;
     }),
-    refreshJobProgress: vi.fn(async () => ({
-      status: failed ? "failed" : completed ? "succeeded" : "running",
-      total: 1,
-      completed: completed ? 1 : 0,
-      failed: failed ? 1 : 0,
-      remaining: completed || failed ? 0 : 1,
-    })),
+    refreshJobProgress: vi.fn(
+      async (): Promise<ClassificationJobProgress> => ({
+        status: failed ? "failed" : completed ? "succeeded" : "running",
+        total: 1,
+        completed: completed ? 1 : 0,
+        failed: failed ? 1 : 0,
+        remaining: completed || failed ? 0 : 1,
+      }),
+    ),
   };
 
   return {

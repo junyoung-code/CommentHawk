@@ -61,7 +61,7 @@ type InboxRpcRow = {
 };
 
 type InboxRpc = (
-  name: "get_inbox_conversation_page",
+  name: "get_inbox_feed_page",
   input: {
     target_workspace_id: string;
     review_levels: ReviewLevel[];
@@ -74,6 +74,9 @@ type InboxRpc = (
     max_confidence: number | undefined;
     page_size: number;
     page_offset: number;
+    classification_status_filter: InboxClassificationStatus | undefined;
+    period_filter: string;
+    sort_order: string;
   },
 ) => PromiseLike<{
   data: InboxRpcRow[] | null;
@@ -146,7 +149,7 @@ export const createSupabaseInboxRepository = ({
   rpc: InboxRpc;
 }): InboxRepository => ({
   async query(input) {
-    const { data, error } = await rpc("get_inbox_conversation_page", {
+    const { data, error } = await rpc("get_inbox_feed_page", {
       target_workspace_id: input.workspaceId,
       review_levels: input.reviewLevels,
       category_filter: input.category ?? undefined,
@@ -158,14 +161,23 @@ export const createSupabaseInboxRepository = ({
       max_confidence: input.maxConfidence ?? undefined,
       page_size: input.limit,
       page_offset: input.offset,
+      classification_status_filter: input.classificationStatus ?? undefined,
+      period_filter: input.period ?? "all",
+      sort_order: input.sort ?? "latest",
     });
 
     if (error) {
       throw new Error(error.message ?? "Comment Inbox could not be loaded");
     }
 
-    return {
-      items: (data ?? []).map((row) => ({
+    const items = (data ?? []).map((row) => {
+      const aiClassificationStatus = classificationStatus(
+        row.classification_status,
+      );
+      const resolvedByUser =
+        aiClassificationStatus === "review_queue" && row.review_level !== null;
+
+      return {
         rawCommentId: row.raw_comment_id,
         sourceImportJobId: row.source_import_job_id,
         sourceKind: row.source_kind,
@@ -179,9 +191,9 @@ export const createSupabaseInboxRepository = ({
         sourceAvailable: row.source_available,
         safeSourceText: row.safe_source_text,
         analysisId: row.analysis_id,
-        classificationStatus: classificationStatus(
-          row.classification_status,
-        ),
+        classificationStatus: resolvedByUser ? "decided" : aiClassificationStatus,
+        aiClassificationStatus,
+        resolvedByUser,
         classificationTrace: classificationTrace(row.classification_trace),
         category: row.category,
         reviewLevel: row.review_level,
@@ -201,7 +213,11 @@ export const createSupabaseInboxRepository = ({
         replies: rpcReplies(row.replies)
           .map(mapReply)
           .filter((reply): reply is InboxReply => reply !== null),
-      })),
+      } satisfies InboxItem;
+    });
+
+    return {
+      items,
       total: data?.[0]?.total_count ?? 0,
     };
   },

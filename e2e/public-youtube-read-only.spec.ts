@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 
-import { FIXTURE_LABEL } from "./fixtures/providers";
-import { requestAndOpenMagicLink } from "./helpers/supabase-mail";
+import {
+  E2E_DEVELOPER_EMAIL,
+  E2E_DEVELOPER_USER_ID,
+  FIXTURE_LABEL,
+} from "./fixtures/providers";
+import {
+  resetLocalAuthUser,
+  requestAndOpenMagicLink,
+} from "./helpers/supabase-mail";
 
 const FIXTURE_PUBLIC_VIDEO_URL =
   "https://www.youtube.com/watch?v=fixture0001";
@@ -34,14 +41,17 @@ test("imports and reviews 20 public comments without YouTube OAuth", async ({
     await route.continue();
   });
 
-  const email = `public-flow-${Date.now()}@example.com`;
+  await resetLocalAuthUser({
+    email: E2E_DEVELOPER_EMAIL,
+    id: E2E_DEVELOPER_USER_ID,
+  });
   await page.goto("/auth/sign-in");
   await expect(
     page.getByRole("button", { name: "Google로 계속하기" }),
   ).toBeVisible();
-  await requestAndOpenMagicLink(page, email);
+  await requestAndOpenMagicLink(page, E2E_DEVELOPER_EMAIL);
 
-  await page.goto("/app/connect/youtube");
+  await page.goto("/app/developer-tools");
   await expect(page.getByRole("status").getByText(FIXTURE_LABEL)).toBeVisible();
 
   await page
@@ -86,7 +96,7 @@ test("imports and reviews 20 public comments without YouTube OAuth", async ({
   await expect(page.getByText("읽기 전용").first()).toBeVisible();
   await expect(
     page.getByText(
-      "공개 URL 댓글에서 YouTube 조치는 사용할 수 없습니다. 숨김·삭제는 해당 채널 소유자의 권한이 필요합니다.",
+      "공개 URL 댓글에서 YouTube 조치는 사용할 수 없습니다. 채널 소유자 권한이 필요합니다.",
     ).first(),
   ).toBeVisible();
   await expect(
@@ -103,11 +113,19 @@ test("imports and reviews 20 public comments without YouTube OAuth", async ({
     page.getByText("오늘 영상도 편안하게 잘 봤어요."),
   ).toBeVisible();
 
-  const protectedCard = page.locator(".inbox-comment-card").filter({
-    has: page.getByText("테스트 작성자 fixture-public-comment-4", {
+  await page
+    .getByRole("link", {
+      name: /테스트 작성자 fixture-public-comment-4/,
+    })
+    .click();
+  const protectedCard = page.getByRole("region", {
+    name: "댓글 대화",
+  });
+  await expect(
+    protectedCard.getByText("테스트 작성자 fixture-public-comment-4", {
       exact: true,
     }),
-  });
+  ).toBeVisible();
   await expect(protectedCard).toBeVisible();
   await expect(
     protectedCard.getByText("source harmful text"),

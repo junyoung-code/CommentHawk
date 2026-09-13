@@ -11,6 +11,9 @@ import type {
 const cleanLuna: LunaFirstPass = {
   candidateLevel: "safe",
   certainty: "clear",
+  intent: "neutral",
+  target: "none",
+  ambiguityReasons: [],
   feedbackPresent: true,
   locationOrScheduleMention: false,
   sensitiveTopicMatched: false,

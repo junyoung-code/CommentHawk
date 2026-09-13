@@ -5,6 +5,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
 import type { BranchOutcome } from "./branch";
+import { CLASSIFICATION_SCHEMA_VERSION } from "./configuration";
 import {
   createClassificationService,
   type ClassificationJobRepository,
@@ -20,13 +21,13 @@ import { classificationStageProvider } from "./fixture-classification-clients";
 import { createOpenAIEmbedding } from "./openai-embedding";
 import { createFirstPass, createRewrite, createSecondPass } from "./openai-clients";
 import { createPersonalizationLookup } from "./personalization-lookup";
-import { toClassificationProfile } from "./profile";
+import { toClassificationProfile, withPolicyContexts } from "./profile";
 import { isRetryableClassificationFailure } from "./classification-errors";
 import {
-  LunaFirstPassSchema,
+  StoredLunaFirstPassSchema,
   ModerationResultSchema,
   RewriteSchema,
-  TerraVerdictSchema,
+  StoredTerraVerdictSchema,
   type FeedbackType,
   type ReasonCode,
 } from "./schemas";
@@ -152,7 +153,7 @@ const decodeState = ({
 
   let firstPass: FirstPassResult | null = null;
   if (lunaRow) {
-    const luna = LunaFirstPassSchema.safeParse(lunaRow.output);
+    const luna = StoredLunaFirstPassSchema.safeParse(lunaRow.output);
     const moderation = moderationRow
       ? ModerationResultSchema.safeParse(moderationRow.output)
       : null;
@@ -177,7 +178,7 @@ const decodeState = ({
 
   let terra: StoredTerraResult | null = null;
   if (terraRow) {
-    const parsed = TerraVerdictSchema.safeParse(terraRow.output);
+    const parsed = StoredTerraVerdictSchema.safeParse(terraRow.output);
     if (parsed.success) {
       terra = {
         result: parsed.data,
@@ -248,7 +249,7 @@ const stageKey = (
   model: string,
   promptVersion: string | null,
 ) =>
-  [item.id, stage, model, promptVersion ?? "no-prompt", "classification-v1"].join(
+  [item.id, stage, model, promptVersion ?? "no-prompt", CLASSIFICATION_SCHEMA_VERSION].join(
     ":",
   );
 
@@ -339,7 +340,7 @@ export const processClassificationChunk = async (
           .in("youtube_video_id", videoIds),
         admin
           .from("creator_policies")
-          .select("version")
+          .select("id, version")
           .eq("workspace_id", workspaceId)
           .order("version", { ascending: false })
           .limit(1)
@@ -355,6 +356,13 @@ export const processClassificationChunk = async (
       if (videoError || policyError || profileError || !videos?.length) {
         throw videoError ?? policyError ?? profileError ?? new Error("video_missing");
       }
+
+      const { data: contextRules, error: contextError } = policy
+        ? await admin.from("phrase_rules").select("phrase, context_note")
+          .eq("workspace_id", workspaceId).eq("policy_id", policy.id)
+          .eq("kind", "context_exception").eq("enabled", true)
+        : { data: [], error: null };
+      if (contextError) throw contextError;
 
       return buildClassificationWorkItems({
         claims: claims.map((claim) => ({
@@ -380,7 +388,7 @@ export const processClassificationChunk = async (
         })),
         channelId: videos[0].youtube_channel_id,
         policyVersion: policy?.version ?? 1,
-        profile: toClassificationProfile(profileRow),
+        profile: withPolicyContexts(toClassificationProfile(profileRow), contextRules ?? []),
       });
     },
     async loadState(item) {
@@ -435,7 +443,7 @@ export const processClassificationChunk = async (
               null,
             ),
             promptVersion: null,
-            schemaVersion: "classification-v1",
+            schemaVersion: CLASSIFICATION_SCHEMA_VERSION,
             policyVersion: item.policyVersion,
             latencyMs: result.moderation.latencyMs,
             usage: {},
@@ -459,7 +467,7 @@ export const processClassificationChunk = async (
               null,
             ),
             promptVersion: null,
-            schemaVersion: "classification-v1",
+            schemaVersion: CLASSIFICATION_SCHEMA_VERSION,
             policyVersion: item.policyVersion,
             latencyMs: null,
             usage: {},
@@ -483,7 +491,7 @@ export const processClassificationChunk = async (
             result.promptVersion,
           ),
           promptVersion: result.promptVersion,
-          schemaVersion: "classification-v1",
+          schemaVersion: CLASSIFICATION_SCHEMA_VERSION,
           policyVersion: item.policyVersion,
           latencyMs: result.luna.run.latencyMs,
           usage: result.luna.run.usage as unknown as Json,
@@ -519,7 +527,7 @@ export const processClassificationChunk = async (
           result.promptVersion,
         ),
         promptVersion: result.promptVersion,
-        schemaVersion: "classification-v1",
+        schemaVersion: CLASSIFICATION_SCHEMA_VERSION,
         policyVersion: item.policyVersion,
         latencyMs: result.run.latencyMs,
         usage: result.run.usage as unknown as Json,
@@ -577,7 +585,7 @@ export const processClassificationChunk = async (
               result.promptVersion,
             ),
             promptVersion: result.promptVersion,
-            schemaVersion: "classification-v1",
+            schemaVersion: CLASSIFICATION_SCHEMA_VERSION,
             policyVersion: item.policyVersion,
             latencyMs: result.run.latencyMs,
             usage: result.run.usage as unknown as Json,

@@ -85,6 +85,9 @@ export type InboxItem = {
   safeSourceText: string | null;
   analysisId: string | null;
   classificationStatus: InboxClassificationStatus | null;
+  /** AI가 처음 저장한 상태. 사용자 해결 뒤에도 감사 기록으로 유지한다. */
+  aiClassificationStatus: InboxClassificationStatus | null;
+  resolvedByUser: boolean;
   classificationTrace: InboxClassificationTrace | null;
   category: CommentCategory | null;
   reviewLevel: ReviewLevel | null;
@@ -116,6 +119,7 @@ export type InboxItem = {
 export type InboxQueryInput = {
   workspaceId: string;
   reviewLevels: ReviewLevel[];
+  classificationStatus: InboxClassificationStatus | null;
   category: CommentCategory | null;
   videoIds: string[];
   analysisState: InboxAnalysisState | null;
@@ -125,6 +129,8 @@ export type InboxQueryInput = {
   search: string | null;
   limit: number;
   offset: number;
+  period?: "all" | "7d" | "30d" | "90d";
+  sort?: "latest" | "likes";
 };
 
 export interface InboxRepository {
@@ -137,6 +143,7 @@ export interface InboxRepository {
 type SearchParams = Record<string, string | string[] | undefined>;
 
 const REVIEW_LEVELS = ["safe", "caution", "risk"] as const;
+const CLASSIFICATION_STATUSES = ["decided", "review_queue"] as const;
 const CATEGORIES = [
   "positive",
   "neutral",
@@ -177,7 +184,7 @@ const parseReviewLevels = (
   value: string | string[] | undefined,
 ): ReviewLevel[] => {
   if (value === undefined) {
-    return ["caution", "risk"];
+    return ["safe", "caution", "risk"];
   }
 
   const candidates = (Array.isArray(value) ? value : value.split(","))
@@ -244,6 +251,10 @@ export const getInboxPage = async (
   const filters: InboxQueryInput = {
     workspaceId,
     reviewLevels: parseReviewLevels(searchParams.levels),
+    classificationStatus: parseEnum(
+      searchParams.status,
+      CLASSIFICATION_STATUSES,
+    ),
     category: parseEnum(searchParams.category, CATEGORIES),
     videoIds: parseVideoIds(searchParams.video),
     analysisState: parseEnum(searchParams.analysis, ANALYSIS_STATES),
@@ -251,6 +262,8 @@ export const getInboxPage = async (
     minConfidence: parseConfidence(searchParams.minConfidence),
     maxConfidence: parseConfidence(searchParams.maxConfidence),
     search: trimmedValue(searchParams.search),
+    period: parseEnum(searchParams.period, ["all", "7d", "30d", "90d"] as const) ?? "all",
+    sort: parseEnum(searchParams.sort, ["latest", "likes"] as const) ?? "latest",
     limit,
     offset: (page - 1) * limit,
   };

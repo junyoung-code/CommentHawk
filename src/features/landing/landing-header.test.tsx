@@ -1,85 +1,21 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LandingHeader } from "./landing-header";
 
-class ControlledIntersectionObserver implements IntersectionObserver {
-  static callback: IntersectionObserverCallback | null = null;
-
-  readonly root = null;
-  readonly rootMargin = "0px";
-  readonly thresholds = [0];
-
-  constructor(callback: IntersectionObserverCallback) {
-    ControlledIntersectionObserver.callback = callback;
-  }
-
-  disconnect() {}
-  observe() {}
-  takeRecords() {
-    return [];
-  }
-  unobserve() {}
-}
-
 describe("LandingHeader", () => {
-  beforeEach(() => {
-    ControlledIntersectionObserver.callback = null;
-    vi.stubGlobal("IntersectionObserver", ControlledIntersectionObserver);
-    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      callback(0);
-      return 1;
-    });
-    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("changes to the compact sticky state after scrolling", () => {
-    render(<LandingHeader />);
-
-    Object.defineProperty(window, "scrollY", { configurable: true, value: 40 });
-    fireEvent.scroll(window);
-
-    expect(screen.getByRole("banner")).toHaveClass("landing-header-scrolled");
-  });
-
-  it("marks the section crossing the activation band as current", () => {
-    render(
-      <>
-        <div id="problems" />
-        <div id="solutions" />
-        <div id="analysis" />
-        <div id="integration" />
-        <LandingHeader />
-      </>,
-    );
-
-    const solutions = document.getElementById("solutions");
-    expect(solutions).not.toBeNull();
-
-    act(() => {
-      ControlledIntersectionObserver.callback?.(
-        [
-          {
-            boundingClientRect: solutions!.getBoundingClientRect(),
-            intersectionRatio: 0.7,
-            intersectionRect: solutions!.getBoundingClientRect(),
-            isIntersecting: true,
-            rootBounds: null,
-            target: solutions!,
-            time: 0,
-          },
-        ],
-        {} as IntersectionObserver,
-      );
-    });
-
-    expect(screen.getByRole("link", { name: "해결 방식" })).toHaveAttribute(
-      "aria-current",
-      "location",
-    );
+  afterEach(() => vi.restoreAllMocks());
+  it("opens and closes the compact usage guide without navigating away", () => {
+    const { container } = render(<LandingHeader />);
+    const dialog = container.querySelector("dialog")!;
+    const show = vi.fn(() => dialog.setAttribute("open", ""));
+    const close = vi.fn(() => dialog.removeAttribute("open"));
+    dialog.showModal = show;
+    dialog.close = close;
+    fireEvent.click(screen.getByRole("button", { name: "이용 방법" }));
+    expect(show).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Comment Inbox");
+    fireEvent.click(screen.getByRole("button", { name: "이용 방법 닫기" }));
+    expect(close).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

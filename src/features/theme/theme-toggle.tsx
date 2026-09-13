@@ -27,7 +27,7 @@ function subscribeToProductTheme(onStoreChange: () => void) {
 }
 
 function readServerProductTheme(): ProductTheme {
-  return "light";
+  return "dark";
 }
 
 export function ThemeToggle() {
